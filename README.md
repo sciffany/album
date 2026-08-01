@@ -1,36 +1,60 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Album
 
-## Getting Started
+Personal photo tagging library with folders, inline tags/captions, and search.
 
-First, run the development server:
+## Stack
+
+- Next.js (App Router) + React + Tailwind
+- Prisma + Neon (PostgreSQL)
+- Auth.js (Google OAuth + email allowlist)
+- Postgres full-text search on captions
+
+## Setup
+
+1. Copy env and fill in Neon + Google OAuth values:
+
+```bash
+cp .env.example .env
+```
+
+2. In [Neon](https://neon.tech), create a project and set:
+
+- `DATABASE_URL` — pooled connection string
+- `DIRECT_URL` — direct connection string (for migrations)
+
+3. Create a Google OAuth client (Authorized redirect URI: `http://localhost:3000/api/auth/callback/google`) and set `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`.
+
+4. Set `ALLOWED_EMAILS` to your Google email (comma-separated for multiple).
+
+5. Generate `AUTH_SECRET`:
+
+```bash
+openssl rand -base64 32
+```
+
+6. Apply migrations and seed sample data:
+
+```bash
+npm install
+npx prisma migrate deploy
+npm run db:seed
+```
+
+7. Start the app:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## App routes
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `/login` — Google sign-in
+- `/browse` — root folders
+- `/browse/Family/2024/Japan%20Trip` — nested folder by path
+- `/search?q=tokyo&from=2024-01-01&to=2024-12-31` — tags, captions (FTS), dateTaken
 
-## Learn More
+## Ingestion
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Populate `folders`, `media`, `tags`, and `media_tags` with your own script. Keep `folders.path` denormalized (e.g. `Family/2024/Japan Trip`) when creating nested folders.
