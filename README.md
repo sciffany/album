@@ -71,6 +71,6 @@ Open [http://localhost:3000](http://localhost:3000).
 |---------|--------|
 | Folders / hierarchy | S3 prefixes (`ListObjectsV2` + `Delimiter=/`) |
 | Media files / URLs | S3 object keys (presigned for display and open) |
-| Tags, captions, AI captions | Postgres `media` + `tags` + `media_tags`, keyed by `s3_key` |
+| Tags, captions, AI captions, `datetime_taken` | Postgres `media` + `tags` + `media_tags`, keyed by `s3_key` |
 
-Editing a caption or tags upserts a `media` row for that S3 key. Objects with no row yet still appear in browse with empty metadata.
+Editing a caption or tags upserts a `media` row for that S3 key. Objects with no row yet still appear in browse with empty metadata. Browse/search display and sort use `datetime_taken` (not S3 upload/`LastModified`).

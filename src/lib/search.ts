@@ -44,7 +44,7 @@ export async function searchMedia({
     .map((row) => ({
       s3Key: row!.s3Key,
       mediaType: mediaTypeFromKey(row!.s3Key),
-      lastModified: null,
+      datetimeTaken: row!.datetimeTaken,
       caption: row!.caption,
       aiCaption: row!.aiCaption,
       tags: row!.tags,

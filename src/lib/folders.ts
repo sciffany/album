@@ -25,7 +25,7 @@ export type FolderItem = S3Folder;
 export type MediaListItem = {
   s3Key: string;
   mediaType: string;
-  lastModified: Date | null;
+  datetimeTaken: Date | null;
   caption: string | null;
   aiCaption: string | null;
   tags: { tag: { id: string; text: string } }[];
@@ -89,11 +89,18 @@ export async function listFolderContents(path: string): Promise<{
     return {
       s3Key: obj.key,
       mediaType: mediaTypeFromKey(obj.key),
-      lastModified: obj.lastModified,
+      datetimeTaken: row?.datetimeTaken ?? null,
       caption: row?.caption ?? null,
       aiCaption: row?.aiCaption ?? null,
       tags: row?.tags ?? [],
     };
+  });
+
+  media.sort((a, b) => {
+    const at = a.datetimeTaken?.getTime() ?? 0;
+    const bt = b.datetimeTaken?.getTime() ?? 0;
+    if (at !== bt) return bt - at;
+    return a.s3Key.localeCompare(b.s3Key);
   });
 
   return { folders, media };

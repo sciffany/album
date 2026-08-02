@@ -10,12 +10,14 @@ datasource db {
 
 /// Metadata only — folder structure and URLs come from S3.
 model Media {
-  id        String     @id @default(cuid())
-  s3Key     String     @unique @map("s3_key")
-  caption   String?
-  aiCaption String?    @map("ai_caption")
-  tags      MediaTag[]
+  id            String     @id @default(cuid())
+  s3Key         String     @unique @map("s3_key")
+  caption       String?
+  aiCaption     String?    @map("ai_caption")
+  datetimeTaken DateTime?  @map("datetime_taken")
+  tags          MediaTag[]
 
+  @@index([datetimeTaken])
   @@map("media")
 }
 

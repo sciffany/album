@@ -9,7 +9,7 @@ export type MediaItem = {
   mediaType: string;
   caption: string | null;
   aiCaption: string | null;
-  lastModified: Date | string | null;
+  datetimeTaken: Date | string | null;
   tags: { tag: { id: string; text: string } }[];
 };
 
@@ -43,7 +43,7 @@ function fileName(key: string) {
 export function MediaRow({ media }: { media: MediaItem }) {
   const [thumbFailed, setThumbFailed] = useState(false);
   const objectHref = `/api/s3/object?key=${encodeURIComponent(media.s3Key)}`;
-  const dateLabel = formatDate(media.lastModified);
+  const dateLabel = formatDate(media.datetimeTaken);
 
   return (
     <article className="flex gap-3 rounded-lg border border-transparent p-2 transition hover:border-[var(--border)] hover:bg-[var(--surface)]/60 sm:gap-4">
