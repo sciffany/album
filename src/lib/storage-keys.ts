@@ -71,6 +71,61 @@ export function joinKey(folderPath: string, fileName: string): string {
   return folder ? `${folder}/${name}` : name;
 }
 
+/** Zero-byte S3 key that materializes an empty folder prefix. */
+export function folderMarkerKey(folderPath: string): string {
+  const folder = assertValidFolderPath(folderPath, "folder path");
+  if (!folder) throw new Error("Cannot create a marker for the bucket root");
+  return `${folder}/`;
+}
+
+/** Validate a single folder name segment (no slashes). */
+export function assertValidFolderName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("Folder name is required");
+  if (
+    trimmed.includes("/") ||
+    trimmed.includes("\0") ||
+    trimmed.includes("..") ||
+    trimmed === "." ||
+    trimmed === TRASH_ROOT
+  ) {
+    throw new Error("Invalid folder name");
+  }
+  return trimmed;
+}
+
+/**
+ * Join a browse folder with a relative upload path (may include nested
+ * directories from a directory picker). Rejects `..` and empty segments.
+ */
+export function joinRelativeKey(
+  folderPath: string,
+  relativePath: string,
+): string {
+  const folder = assertValidFolderPath(folderPath || "");
+  const normalized = relativePath
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\/+|\/+$/g, "")
+    .replace(/\/+/g, "/");
+  if (!normalized) throw new Error("Invalid relative path");
+
+  const segments = normalized.split("/");
+  for (const segment of segments) {
+    if (
+      !segment ||
+      segment === "." ||
+      segment === ".." ||
+      segment.includes("\0")
+    ) {
+      throw new Error("Invalid relative path");
+    }
+  }
+
+  const key = folder ? `${folder}/${normalized}` : normalized;
+  return assertValidKey(key);
+}
+
 export function parentFolder(key: string): string {
   const i = key.lastIndexOf("/");
   return i === -1 ? "" : key.slice(0, i);

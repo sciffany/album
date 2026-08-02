@@ -1,25 +1,7 @@
+import { isMediaKey } from "@/lib/media-types";
 import { prisma } from "@/lib/prisma";
 import { listPrefix, prefixExists, type S3Folder } from "@/lib/s3";
 import { isTrashFolderPath, TRASH_ROOT } from "@/lib/storage-keys";
-
-const MEDIA_EXT = new Set([
-  "jpg",
-  "jpeg",
-  "png",
-  "gif",
-  "webp",
-  "heic",
-  "heif",
-  "tif",
-  "tiff",
-  "bmp",
-  "mp4",
-  "mov",
-  "m4v",
-  "webm",
-  "mkv",
-  "avi",
-]);
 
 export type FolderItem = S3Folder;
 
@@ -54,13 +36,6 @@ export function mediaTypeFromKey(key: string): string {
   if (["mp4", "mov", "m4v", "webm", "mkv", "avi"].includes(ext)) return "video";
   if (["gif"].includes(ext)) return "meme";
   return "photo";
-}
-
-function isMediaKey(key: string): boolean {
-  const base = key.split("/").pop() ?? key;
-  if (base.startsWith(".")) return false;
-  const ext = base.split(".").pop()?.toLowerCase() ?? "";
-  return MEDIA_EXT.has(ext);
 }
 
 export async function assertPrefixExists(path: string) {

@@ -1,3 +1,4 @@
+import { isMediaKey } from "@/lib/media-types";
 import { prisma } from "@/lib/prisma";
 import {
   copyObject,
@@ -5,12 +6,16 @@ import {
   listAllObjects,
   listPrefix,
   objectExists,
+  putObject,
 } from "@/lib/s3";
 import {
+  assertValidFolderName,
   assertValidFolderPath,
   assertValidKey,
+  folderMarkerKey,
   isTrashKey,
   joinKey,
+  joinRelativeKey,
   makeTrashKey,
   normalizeFolderPath,
   originalKeyFromTrashKey,
@@ -25,20 +30,115 @@ async function relocateObject(fromKey: string, toKey: string): Promise<void> {
 
   await copyObject(fromKey, toKey);
 
-  try {
-    const existing = await prisma.media.findUnique({ where: { s3Key: fromKey } });
-    if (existing) {
-      await prisma.media.update({
-        where: { id: existing.id },
-        data: { s3Key: toKey },
+  // Folder markers are not media rows — skip DB rewrite.
+  if (!fromKey.endsWith("/") && !toKey.endsWith("/")) {
+    try {
+      const existing = await prisma.media.findUnique({
+        where: { s3Key: fromKey },
       });
+      if (existing) {
+        await prisma.media.update({
+          where: { id: existing.id },
+          data: { s3Key: toKey },
+        });
+      }
+    } catch (err) {
+      await deleteObject(toKey).catch(() => undefined);
+      throw err;
     }
-  } catch (err) {
-    await deleteObject(toKey).catch(() => undefined);
-    throw err;
   }
 
   await deleteObject(fromKey);
+}
+
+/** Create an empty folder via a zero-byte `path/` marker object. */
+export async function createFolder(
+  parentPath: string,
+  name: string,
+): Promise<{ path: string }> {
+  const parent = assertValidFolderPath(parentPath || "");
+  const folderName = assertValidFolderName(name);
+  const path = parent ? `${parent}/${folderName}` : folderName;
+  assertValidFolderPath(path);
+
+  if (await prefixExistsOrMarker(path)) {
+    throw new Error("A folder with that name already exists");
+  }
+
+  await putObject(folderMarkerKey(path));
+  return { path };
+}
+
+async function prefixExistsOrMarker(path: string): Promise<boolean> {
+  const normalized = normalizeFolderPath(path);
+  if (!normalized) return true;
+  if (await objectExists(folderMarkerKey(normalized))) return true;
+  const { folders, objects } = await listPrefix(normalized);
+  if (folders.length > 0 || objects.length > 0) return true;
+  const parentListing = await listPrefix(
+    normalized.includes("/")
+      ? normalized.slice(0, normalized.lastIndexOf("/"))
+      : "",
+  );
+  const name = normalized.split("/").pop()!;
+  return parentListing.folders.some((f) => f.name === name);
+}
+
+const MAX_UPLOAD_BYTES = 512 * 1024 * 1024; // 512 MiB
+const MAX_PRESIGN_BATCH = 100;
+
+export type UploadPresignRequest = {
+  relativePath: string;
+  contentType: string;
+  size: number;
+};
+
+export type UploadPresignResult = {
+  key: string;
+  url: string;
+  contentType: string;
+};
+
+/** Validate upload targets and return destination keys (presign happens in actions). */
+export function resolveUploadKeys(
+  destinationFolder: string,
+  files: UploadPresignRequest[],
+): { key: string; contentType: string; size: number }[] {
+  if (!files.length) throw new Error("No files to upload");
+  if (files.length > MAX_PRESIGN_BATCH) {
+    throw new Error(`Upload at most ${MAX_PRESIGN_BATCH} files at a time`);
+  }
+
+  const folder = assertValidFolderPath(destinationFolder || "");
+  const seen = new Set<string>();
+  const resolved: { key: string; contentType: string; size: number }[] = [];
+
+  for (const file of files) {
+    if (!Number.isFinite(file.size) || file.size < 0) {
+      throw new Error("Invalid file size");
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      throw new Error(`File too large (max ${MAX_UPLOAD_BYTES} bytes)`);
+    }
+
+    const key = joinRelativeKey(folder, file.relativePath);
+    if (isTrashKey(key)) {
+      throw new Error("Cannot upload into the recycle bin");
+    }
+    if (!isMediaKey(key)) {
+      throw new Error(`Unsupported media type: ${file.relativePath}`);
+    }
+    if (seen.has(key)) {
+      throw new Error(`Duplicate upload target: ${key}`);
+    }
+    seen.add(key);
+
+    const contentType =
+      file.contentType?.trim() || "application/octet-stream";
+    resolved.push({ key, contentType, size: file.size });
+  }
+
+  return resolved;
 }
 
 async function recordSoftDeleteMetadata(
@@ -135,6 +235,7 @@ export async function moveMediaToFolder(
 /**
  * Move every object under `fromPrefix` to `toPrefix`, rewriting keys.
  * Example: Family/2024 → Archive/2024
+ * Includes empty-folder marker objects (`prefix/`).
  */
 export async function moveFolderPrefix(
   fromPrefix: string,
@@ -148,7 +249,7 @@ export async function moveFolderPrefix(
     throw new Error("Destination cannot be inside the source folder");
   }
 
-  const objects = await listAllObjects(from);
+  const objects = await listAllObjects(from, { includeMarkers: true });
   if (objects.length === 0) {
     throw new Error("Source folder is empty or does not exist");
   }
@@ -158,7 +259,14 @@ export async function moveFolderPrefix(
     if (!obj.key.startsWith(`${from}/`) && obj.key !== from) continue;
     const suffix =
       obj.key === from ? "" : obj.key.slice(from.length + 1);
-    const destKey = suffix ? `${to}/${suffix}` : to;
+    // Preserve trailing slash on folder markers.
+    const destKey = obj.key.endsWith("/")
+      ? suffix
+        ? `${to}/${suffix}`
+        : `${to}/`
+      : suffix
+        ? `${to}/${suffix}`
+        : to;
     await relocateObject(obj.key, destKey);
     moved += 1;
   }
@@ -170,14 +278,17 @@ export async function softDeleteMediaObject(fromKey: string): Promise<string> {
   return softDeleteObject(fromKey);
 }
 
-/** Soft-delete every object under a folder prefix into the recycle bin. */
+/**
+ * Soft-delete every object under a folder prefix into the recycle bin.
+ * Empty-folder markers are removed (nothing meaningful to restore).
+ */
 export async function softDeleteFolderPrefix(
   folderPath: string,
 ): Promise<{ deleted: number }> {
   const path = assertValidFolderPath(folderPath, "folder path");
   if (!path) throw new Error("Cannot delete the bucket root");
 
-  const objects = await listAllObjects(path);
+  const objects = await listAllObjects(path, { includeMarkers: true });
   if (objects.length === 0) {
     throw new Error("Folder is empty or does not exist");
   }
@@ -185,6 +296,11 @@ export async function softDeleteFolderPrefix(
   let deleted = 0;
   for (const obj of objects) {
     if (isTrashKey(obj.key)) continue;
+    if (obj.key.endsWith("/")) {
+      await deleteObject(obj.key);
+      deleted += 1;
+      continue;
+    }
     await softDeleteObject(obj.key);
     deleted += 1;
   }

@@ -66,9 +66,29 @@ Open [http://localhost:3000](http://localhost:3000).
 - `/trash` — recycle bin (soft-deleted objects under `_trash/`)
 - `/api/s3/object?key=…` — auth-gated redirect to a presigned S3 GET URL
 
+## Create folders & upload
+
+Browse can **create empty folders** (zero-byte `folder/` marker objects in S3) and **upload files or whole folders** via browser-presigned PUTs into the current path. Directory upload preserves the relative folder tree from the picker. Only common image/video extensions are accepted.
+
+Browser uploads require **CORS** on the bucket allowing `PUT` from your app origin (e.g. `http://localhost:3000` and your production URL), plus expose/allow `Content-Type`. Example S3 CORS rule:
+
+```json
+[
+  {
+    "AllowedHeaders": ["*"],
+    "AllowedMethods": ["GET", "PUT", "HEAD"],
+    "AllowedOrigins": ["http://localhost:3000", "https://your-domain.example"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3000
+  }
+]
+```
+
+For Backblaze B2, set the same CORS rules on the bucket in the B2 console / API.
+
 ## Move & soft delete
 
-Browse actions can **move** files/folders (S3 copy + delete, then update `media.s3_key`) and **soft-delete** them into a reserved `_trash/<timestamp>-<id>/…` prefix. Soft-deleted items disappear from library browse/search and appear on `/trash` for restore or permanent purge. Your storage credentials need write + delete permission on the bucket (B2: `writeFiles` + `deleteFiles`).
+Browse actions can **move** files/folders (S3 copy + delete, then update `media.s3_key`) and **soft-delete** them into a reserved `_trash/<timestamp>-<id>/…` prefix. Soft-deleted items disappear from library browse/search and appear on `/trash` for restore or permanent purge. Empty-folder markers are removed on delete (nothing to restore). Your storage credentials need write + delete permission on the bucket (B2: `writeFiles` + `deleteFiles`).
 
 ## Data model
 

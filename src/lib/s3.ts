@@ -4,6 +4,7 @@ import {
   GetObjectCommand,
   HeadObjectCommand,
   ListObjectsV2Command,
+  PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -68,6 +69,37 @@ export async function presignGetObject(
 ) {
   const command = new GetObjectCommand({ Bucket: bucket, Key: key });
   return getSignedUrl(getClient(), command, { expiresIn });
+}
+
+export async function presignPutObject(
+  bucket: string,
+  key: string,
+  contentType: string,
+  expiresIn = 60 * 15,
+) {
+  const command = new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    ContentType: contentType,
+  });
+  return getSignedUrl(getClient(), command, { expiresIn });
+}
+
+/** Put object bytes (or an empty folder-marker object). */
+export async function putObject(
+  key: string,
+  body: Buffer | Uint8Array | string = new Uint8Array(),
+  contentType?: string,
+): Promise<void> {
+  const bucket = getBucket();
+  await getClient().send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: body,
+      ...(contentType ? { ContentType: contentType } : {}),
+    }),
+  );
 }
 
 export type S3Folder = {
@@ -156,9 +188,13 @@ export async function prefixExists(path: string): Promise<boolean> {
 }
 
 /** List every object under an optional prefix (no delimiter — recursive). */
-export async function listAllObjects(path = ""): Promise<S3Object[]> {
+export async function listAllObjects(
+  path = "",
+  opts?: { includeMarkers?: boolean },
+): Promise<S3Object[]> {
   const bucket = getBucket();
   const prefix = path ? normalizePrefix(path) : "";
+  const includeMarkers = opts?.includeMarkers ?? false;
   const objects: S3Object[] = [];
   let token: string | undefined;
 
@@ -172,8 +208,10 @@ export async function listAllObjects(path = ""): Promise<S3Object[]> {
     );
 
     for (const obj of res.Contents ?? []) {
-      if (!obj.Key || obj.Key.endsWith("/")) continue;
-      if (prefix && obj.Key === prefix) continue;
+      if (!obj.Key) continue;
+      const isMarker = obj.Key.endsWith("/");
+      if (isMarker && !includeMarkers) continue;
+      if (!includeMarkers && prefix && obj.Key === prefix) continue;
       objects.push({
         key: obj.Key,
         lastModified: obj.LastModified ?? null,

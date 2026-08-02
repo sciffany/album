@@ -3,15 +3,19 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import {
+  createFolder,
   listChildFolderPaths,
   moveFolderPrefix,
   moveMediaToFolder,
   purgeMediaObject,
+  resolveUploadKeys,
   restoreMediaObject,
   softDeleteFolderPrefix,
   softDeleteMediaObject,
+  type UploadPresignRequest,
 } from "@/lib/media-ops";
 import { prisma } from "@/lib/prisma";
+import { getBucket, objectExists, presignPutObject } from "@/lib/s3";
 import { findOrCreateTags } from "@/lib/tags";
 
 async function requireUser() {
@@ -158,4 +162,77 @@ export async function purgeMediaAction(trashKey: string) {
 export async function listFoldersAction(path: string) {
   await requireUser();
   return listChildFolderPaths(path);
+}
+
+export async function createFolderAction(parentPath: string, name: string) {
+  await requireUser();
+  try {
+    const result = await createFolder(parentPath, name);
+    revalidateLibrary();
+    return { ok: true as const, ...result };
+  } catch (err) {
+    return {
+      ok: false as const,
+      error: actionError(err, "Could not create folder"),
+    };
+  }
+}
+
+export async function presignUploadsAction(
+  destinationFolder: string,
+  files: UploadPresignRequest[],
+) {
+  await requireUser();
+  try {
+    const resolved = resolveUploadKeys(destinationFolder, files);
+    const bucket = getBucket();
+    const uploads = [];
+
+    for (const file of resolved) {
+      if (await objectExists(file.key)) {
+        return {
+          ok: false as const,
+          error: `Already exists: ${file.key}`,
+        };
+      }
+      const url = await presignPutObject(bucket, file.key, file.contentType);
+      uploads.push({
+        key: file.key,
+        url,
+        contentType: file.contentType,
+      });
+    }
+
+    return { ok: true as const, uploads };
+  } catch (err) {
+    return {
+      ok: false as const,
+      error: actionError(err, "Could not prepare upload"),
+    };
+  }
+}
+
+/** Call after client PUTs succeed so browse/search caches refresh. */
+export async function completeUploadsAction(keys: string[]) {
+  await requireUser();
+  try {
+    for (const key of keys) {
+      const trimmed = key.trim();
+      if (!trimmed || trimmed.includes("\0") || trimmed.startsWith("/")) {
+        throw new Error("Invalid S3 key");
+      }
+      await prisma.media.upsert({
+        where: { s3Key: trimmed },
+        create: { s3Key: trimmed },
+        update: {},
+      });
+    }
+    revalidateLibrary();
+    return { ok: true as const };
+  } catch (err) {
+    return {
+      ok: false as const,
+      error: actionError(err, "Could not finish upload"),
+    };
+  }
 }

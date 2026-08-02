@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { BrowseToolbar } from "@/components/BrowseToolbar";
 import { FolderBreadcrumb } from "@/components/FolderBreadcrumb";
 import { FolderGrid } from "@/components/FolderGrid";
 import {
@@ -30,11 +31,14 @@ export default async function BrowsePage({
 
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
+      <div className="space-y-3">
         <FolderBreadcrumb crumbs={crumbs} />
-        <h1 className="font-[family-name:var(--font-display)] text-3xl text-[var(--ink)]">
-          {path ? path.split("/").at(-1) : "Library"}
-        </h1>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <h1 className="font-[family-name:var(--font-display)] text-3xl text-[var(--ink)]">
+            {path ? path.split("/").at(-1) : "Library"}
+          </h1>
+          <BrowseToolbar path={path} />
+        </div>
       </div>
       <FolderGrid folders={folders} media={media} />
     </div>

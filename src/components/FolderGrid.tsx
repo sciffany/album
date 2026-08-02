@@ -17,7 +17,7 @@ export function FolderGrid({
   if (folders.length === 0 && media.length === 0) {
     return (
       <p className="py-16 text-center text-[var(--muted)]">
-        This folder is empty in S3.
+        This folder is empty. Create a subfolder or upload photos and videos.
       </p>
     );
   }
