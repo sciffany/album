@@ -12,10 +12,10 @@ import { setMediaTags } from "@/lib/actions";
 type TagChip = { id?: string; text: string };
 
 export function TagEditor({
-  mediaId,
+  s3Key,
   initialTags,
 }: {
-  mediaId: string;
+  s3Key: string;
   initialTags: TagChip[];
 }) {
   const [tags, setTags] = useState<TagChip[]>(initialTags);
@@ -69,7 +69,7 @@ export function TagEditor({
     startTransition(async () => {
       try {
         await setMediaTags(
-          mediaId,
+          s3Key,
           next.map((t) => t.text),
         );
       } catch {

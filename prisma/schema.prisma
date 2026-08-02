@@ -8,47 +8,14 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-enum Source {
-  google_photos
-  mega
-  s3
-}
-
-enum MediaType {
-  photo
-  video
-  reel
-  meme
-}
-
-model Folder {
-  id        Int      @id @default(autoincrement())
-  name      String
-  parentId  Int?     @map("parent_id")
-  parent    Folder?  @relation("FolderTree", fields: [parentId], references: [id])
-  children  Folder[] @relation("FolderTree")
-  path      String   @unique
-  createdAt DateTime @default(now()) @map("created_at")
-  media     Media[]
-
-  @@map("folders")
-}
-
+/// Metadata only — folder structure and URLs come from S3.
 model Media {
-  id            String     @id @default(cuid())
-  source        Source
-  url           String
-  thumbnailPath String?    @map("thumbnail_path")
-  dateAdded     DateTime   @default(now()) @map("date_added")
-  dateTaken     DateTime?  @map("date_taken")
-  mediaType     MediaType  @map("media_type")
-  caption       String?
-  aiCaption     String?    @map("ai_caption")
-  folderId      Int?       @map("folder_id")
-  folder        Folder?    @relation(fields: [folderId], references: [id])
-  tags          MediaTag[]
+  id        String     @id @default(cuid())
+  s3Key     String     @unique @map("s3_key")
+  caption   String?
+  aiCaption String?    @map("ai_caption")
+  tags      MediaTag[]
 
-  @@index([dateTaken])
   @@map("media")
 }
 

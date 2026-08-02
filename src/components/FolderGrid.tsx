@@ -2,7 +2,6 @@ import Link from "next/link";
 import { MediaRow, type MediaItem } from "@/components/MediaRow";
 
 type FolderItem = {
-  id: number;
   name: string;
   path: string;
 };
@@ -17,7 +16,7 @@ export function FolderGrid({
   if (folders.length === 0 && media.length === 0) {
     return (
       <p className="py-16 text-center text-[var(--muted)]">
-        This folder is empty. Run your ingestion script to add media.
+        This folder is empty in S3.
       </p>
     );
   }
@@ -26,7 +25,7 @@ export function FolderGrid({
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {folders.map((folder) => (
         <Link
-          key={folder.id}
+          key={folder.path}
           href={`/browse/${folder.path
             .split("/")
             .map(encodeURIComponent)
@@ -52,7 +51,7 @@ export function FolderGrid({
         </Link>
       ))}
       {media.map((item) => (
-        <MediaRow key={item.id} media={item} />
+        <MediaRow key={item.s3Key} media={item} />
       ))}
     </div>
   );

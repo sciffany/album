@@ -28,6 +28,6 @@ export const config = {
     "/search/:path*",
     "/login",
     "/api/tags/:path*",
-    "/api/media/:path*",
+    "/api/s3/:path*",
   ],
 };

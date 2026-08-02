@@ -7,7 +7,7 @@ export default function BrowseNotFound() {
         Folder not found
       </h1>
       <p className="mt-2 text-[var(--muted)]">
-        That path does not exist in the library.
+        That path does not exist in the S3 bucket.
       </p>
       <Link
         href="/browse"

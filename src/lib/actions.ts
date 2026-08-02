@@ -13,11 +13,24 @@ async function requireUser() {
   return session.user;
 }
 
-export async function updateCaption(mediaId: string, caption: string) {
+async function ensureMedia(s3Key: string) {
+  const key = s3Key.trim();
+  if (!key || key.includes("\0") || key.startsWith("/")) {
+    throw new Error("Invalid S3 key");
+  }
+  return prisma.media.upsert({
+    where: { s3Key: key },
+    create: { s3Key: key },
+    update: {},
+  });
+}
+
+export async function updateCaption(s3Key: string, caption: string) {
   await requireUser();
+  const media = await ensureMedia(s3Key);
 
   await prisma.media.update({
-    where: { id: mediaId },
+    where: { id: media.id },
     data: { caption: caption.trim() || null },
   });
 
@@ -25,17 +38,15 @@ export async function updateCaption(mediaId: string, caption: string) {
   revalidatePath("/search");
 }
 
-export async function setMediaTags(mediaId: string, tagTexts: string[]) {
+export async function setMediaTags(s3Key: string, tagTexts: string[]) {
   await requireUser();
-
-  const media = await prisma.media.findUnique({ where: { id: mediaId } });
-  if (!media) throw new Error("Media not found");
+  const media = await ensureMedia(s3Key);
 
   const tags = await findOrCreateTags(tagTexts);
   const tagIds = new Set(tags.map((t) => t.id));
 
   const existing = await prisma.mediaTag.findMany({
-    where: { mediaId },
+    where: { mediaId: media.id },
   });
 
   const toDelete = existing.filter((mt) => !tagIds.has(mt.tagId));
@@ -45,12 +56,12 @@ export async function setMediaTags(mediaId: string, tagTexts: string[]) {
   await prisma.$transaction([
     ...toDelete.map((mt) =>
       prisma.mediaTag.delete({
-        where: { mediaId_tagId: { mediaId, tagId: mt.tagId } },
+        where: { mediaId_tagId: { mediaId: media.id, tagId: mt.tagId } },
       }),
     ),
     ...toCreate.map((t) =>
       prisma.mediaTag.create({
-        data: { mediaId, tagId: t.id },
+        data: { mediaId: media.id, tagId: t.id },
       }),
     ),
   ]);

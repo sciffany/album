@@ -5,13 +5,11 @@ import { TagEditor } from "@/components/TagEditor";
 import { CaptionEditor } from "@/components/CaptionEditor";
 
 export type MediaItem = {
-  id: string;
-  url: string;
-  thumbnailPath: string | null;
+  s3Key: string;
   mediaType: string;
   caption: string | null;
   aiCaption: string | null;
-  dateTaken: Date | string | null;
+  lastModified: Date | string | null;
   tags: { tag: { id: string; text: string } }[];
 };
 
@@ -38,26 +36,28 @@ function formatDate(value: Date | string | null) {
   return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
 }
 
+function fileName(key: string) {
+  return key.split("/").pop() || key;
+}
+
 export function MediaRow({ media }: { media: MediaItem }) {
   const [thumbFailed, setThumbFailed] = useState(false);
-  const thumbSrc = media.thumbnailPath
-    ? `/api/media/${media.id}/thumbnail`
-    : null;
-  const dateLabel = formatDate(media.dateTaken);
+  const objectHref = `/api/s3/object?key=${encodeURIComponent(media.s3Key)}`;
+  const dateLabel = formatDate(media.lastModified);
 
   return (
     <article className="flex gap-3 rounded-lg border border-transparent p-2 transition hover:border-[var(--border)] hover:bg-[var(--surface)]/60 sm:gap-4">
       <a
-        href={media.url}
+        href={objectHref}
         target="_blank"
         rel="noopener noreferrer"
         className="relative h-28 w-28 shrink-0 overflow-hidden rounded-md bg-[var(--surface-2)] sm:h-36 sm:w-36"
       >
-        {thumbSrc && !thumbFailed ? (
+        {!thumbFailed ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={thumbSrc}
-            alt={media.caption || "Media"}
+            src={objectHref}
+            alt={media.caption || fileName(media.s3Key)}
             className="h-full w-full object-cover"
             onError={() => setThumbFailed(true)}
           />
@@ -77,20 +77,21 @@ export function MediaRow({ media }: { media: MediaItem }) {
       </a>
 
       <div className="flex min-w-0 flex-1 flex-col gap-2">
-        {dateLabel && (
-          <p className="text-xs text-[var(--muted)]">{dateLabel}</p>
-        )}
+        <p className="truncate text-xs text-[var(--muted)]">
+          {dateLabel ? `${dateLabel} · ` : ""}
+          {fileName(media.s3Key)}
+        </p>
         <TagEditor
-          key={`tags-${media.id}`}
-          mediaId={media.id}
+          key={`tags-${media.s3Key}`}
+          s3Key={media.s3Key}
           initialTags={media.tags.map((t) => ({
             id: t.tag.id,
             text: t.tag.text,
           }))}
         />
         <CaptionEditor
-          key={`caption-${media.id}`}
-          mediaId={media.id}
+          key={`caption-${media.s3Key}`}
+          s3Key={media.s3Key}
           initialCaption={media.caption}
           aiCaption={media.aiCaption}
         />

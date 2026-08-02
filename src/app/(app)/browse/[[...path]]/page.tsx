@@ -2,8 +2,8 @@ import { notFound } from "next/navigation";
 import { FolderBreadcrumb } from "@/components/FolderBreadcrumb";
 import { FolderGrid } from "@/components/FolderGrid";
 import {
+  assertPrefixExists,
   breadcrumbFromPath,
-  getFolderByPath,
   listFolderContents,
   pathFromSegments,
 } from "@/lib/folders";
@@ -16,14 +16,11 @@ export default async function BrowsePage({
   const { path: segments } = await params;
   const path = pathFromSegments(segments);
 
-  let folderId: number | null = null;
-  if (path) {
-    const folder = await getFolderByPath(path);
-    if (!folder) notFound();
-    folderId = folder.id;
+  if (path && !(await assertPrefixExists(path))) {
+    notFound();
   }
 
-  const { folders, media } = await listFolderContents(folderId);
+  const { folders, media } = await listFolderContents(path);
   const crumbs = breadcrumbFromPath(path);
 
   return (

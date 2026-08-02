@@ -4,11 +4,11 @@ import { useState, useTransition } from "react";
 import { updateCaption } from "@/lib/actions";
 
 export function CaptionEditor({
-  mediaId,
+  s3Key,
   initialCaption,
   aiCaption,
 }: {
-  mediaId: string;
+  s3Key: string;
   initialCaption: string | null;
   aiCaption?: string | null;
 }) {
@@ -24,7 +24,7 @@ export function CaptionEditor({
     setSaved(false);
     startTransition(async () => {
       try {
-        await updateCaption(mediaId, next);
+        await updateCaption(s3Key, next);
         setBaseline(next);
         setSaved(true);
       } catch {

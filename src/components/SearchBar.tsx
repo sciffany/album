@@ -3,29 +3,15 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useState } from "react";
 
-export function SearchBar({
-  initialQ = "",
-  initialFrom = "",
-  initialTo = "",
-}: {
-  initialQ?: string;
-  initialFrom?: string;
-  initialTo?: string;
-}) {
+export function SearchBar({ initialQ = "" }: { initialQ?: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [q, setQ] = useState(initialQ || searchParams.get("q") || "");
-  const [from, setFrom] = useState(
-    initialFrom || searchParams.get("from") || "",
-  );
-  const [to, setTo] = useState(initialTo || searchParams.get("to") || "");
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     const params = new URLSearchParams();
     if (q.trim()) params.set("q", q.trim());
-    if (from) params.set("from", from);
-    if (to) params.set("to", to);
     const qs = params.toString();
     router.push(qs ? `/search?${qs}` : "/search");
   }
@@ -43,29 +29,7 @@ export function SearchBar({
           type="search"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Tags or captions…"
-          className="h-10 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm outline-none ring-[var(--accent)] focus:ring-2"
-        />
-      </label>
-      <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">
-          From
-        </span>
-        <input
-          type="date"
-          value={from}
-          onChange={(e) => setFrom(e.target.value)}
-          className="h-10 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm outline-none ring-[var(--accent)] focus:ring-2"
-        />
-      </label>
-      <label className="flex flex-col gap-1">
-        <span className="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">
-          To
-        </span>
-        <input
-          type="date"
-          value={to}
-          onChange={(e) => setTo(e.target.value)}
+          placeholder="Tags, captions, or file name…"
           className="h-10 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm outline-none ring-[var(--accent)] focus:ring-2"
         />
       </label>
