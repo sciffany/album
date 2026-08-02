@@ -7,12 +7,12 @@ Personal photo tagging library. Folder structure and media files come from an S3
 - Next.js (App Router) + React + Tailwind
 - Prisma + Neon (PostgreSQL)
 - Auth.js (Google OAuth + email allowlist)
-- AWS S3 (listing + private object URLs via presign)
+- AWS S3 or Backblaze B2 (listing + private object URLs via presign)
 - Postgres full-text search on captions
 
 ## Setup
 
-1. Copy env and fill in Neon + Google OAuth + AWS values:
+1. Copy env and fill in Neon + Google OAuth + storage values:
 
 ```bash
 cp .env.example .env
@@ -33,10 +33,13 @@ cp .env.example .env
 openssl rand -base64 32
 ```
 
-6. Set AWS credentials and the bucket that holds your library:
+6. Set object storage for the library bucket (prefixes are folders, objects are media):
 
-- `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_REGION`
-- `S3_BUCKET` — private bucket; prefixes are folders, objects are media
+- `STORAGE_PROVIDER` — `s3` (AWS, default) or `b2` (Backblaze B2)
+- `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` — AWS keys, or B2 application key id/secret
+- `AWS_REGION` — AWS region, or B2 region code (e.g. `us-west-004`)
+- `S3_BUCKET` — private bucket name
+- `S3_ENDPOINT` (optional) — custom S3 API URL; for B2 this defaults to `https://s3.<AWS_REGION>.backblazeb2.com`
 
 7. Apply migrations and seed sample tags:
 

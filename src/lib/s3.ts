@@ -7,20 +7,48 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 let client: S3Client | null = null;
 
+type StorageProvider = "s3" | "b2";
+
 function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`Missing ${name}`);
   return value;
 }
 
+function getStorageProvider(): StorageProvider {
+  const raw = (process.env.STORAGE_PROVIDER ?? "s3").trim().toLowerCase();
+  if (raw === "s3" || raw === "b2") return raw;
+  throw new Error(`Invalid STORAGE_PROVIDER "${raw}" (expected "s3" or "b2")`);
+}
+
+/** B2 S3-compatible endpoint, or any custom S3_ENDPOINT override. */
+function getEndpoint(provider: StorageProvider, region: string): string | undefined {
+  const explicit = process.env.S3_ENDPOINT?.trim();
+  if (explicit) return explicit;
+  if (provider === "b2") {
+    return `https://s3.${region}.backblazeb2.com`;
+  }
+  return undefined;
+}
+
 function getClient() {
+  const provider = getStorageProvider();
   const region = requireEnv("AWS_REGION");
   const accessKeyId = requireEnv("AWS_ACCESS_KEY_ID");
   const secretAccessKey = requireEnv("AWS_SECRET_ACCESS_KEY");
+  const endpoint = getEndpoint(provider, region);
+
   if (!client) {
     client = new S3Client({
       region,
       credentials: { accessKeyId, secretAccessKey },
+      ...(endpoint
+        ? {
+            endpoint,
+            // Required for B2 and most S3-compatible providers.
+            forcePathStyle: true,
+          }
+        : {}),
     });
   }
   return client;
