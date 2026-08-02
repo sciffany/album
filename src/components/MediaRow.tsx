@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { TagEditor } from "@/components/TagEditor";
 import { CaptionEditor } from "@/components/CaptionEditor";
-import { MediaLightbox } from "@/components/MediaLightbox";
 
 export type MediaItem = {
   id: string;
@@ -40,36 +39,42 @@ function formatDate(value: Date | string | null) {
 }
 
 export function MediaRow({ media }: { media: MediaItem }) {
-  const [lightbox, setLightbox] = useState(false);
-  const thumb = media.thumbnailPath || media.url;
-  const isImage =
-    media.mediaType === "photo" ||
-    media.mediaType === "meme" ||
-    media.mediaType === "reel";
+  const [thumbFailed, setThumbFailed] = useState(false);
+  const thumbSrc = media.thumbnailPath
+    ? `/api/media/${media.id}/thumbnail`
+    : null;
   const dateLabel = formatDate(media.dateTaken);
 
   return (
     <article className="flex gap-3 rounded-lg border border-transparent p-2 transition hover:border-[var(--border)] hover:bg-[var(--surface)]/60 sm:gap-4">
-      <button
-        type="button"
-        onClick={() => {
-          if (isImage) setLightbox(true);
-          else window.open(media.url, "_blank", "noopener,noreferrer");
-        }}
+      <a
+        href={media.url}
+        target="_blank"
+        rel="noopener noreferrer"
         className="relative h-28 w-28 shrink-0 overflow-hidden rounded-md bg-[var(--surface-2)] sm:h-36 sm:w-36"
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={thumb}
-          alt={media.caption || "Media"}
-          className="h-full w-full object-cover"
-        />
+        {thumbSrc && !thumbFailed ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={thumbSrc}
+            alt={media.caption || "Media"}
+            className="h-full w-full object-cover"
+            onError={() => setThumbFailed(true)}
+          />
+        ) : (
+          <span className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center text-[10px] uppercase tracking-wide text-[var(--muted)]">
+            <span className="text-lg leading-none" aria-hidden>
+              ↗
+            </span>
+            Open
+          </span>
+        )}
         {media.mediaType !== "photo" && (
           <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-white">
             {media.mediaType}
           </span>
         )}
-      </button>
+      </a>
 
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         {dateLabel && (
@@ -90,13 +95,6 @@ export function MediaRow({ media }: { media: MediaItem }) {
           aiCaption={media.aiCaption}
         />
       </div>
-
-      <MediaLightbox
-        url={media.url}
-        alt={media.caption || "Media"}
-        open={lightbox}
-        onClose={() => setLightbox(false)}
-      />
     </article>
   );
 }
