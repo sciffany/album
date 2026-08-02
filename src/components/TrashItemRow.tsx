@@ -78,6 +78,8 @@ export function TrashItemRow({
             src={objectHref}
             alt={caption || restoreLabel}
             className="h-full w-full object-cover"
+            loading="lazy"
+            decoding="async"
             onError={() => setThumbFailed(true)}
           />
         ) : (

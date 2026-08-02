@@ -60,6 +60,8 @@ export function MediaRow({ media }: { media: MediaItem }) {
             src={objectHref}
             alt={media.caption || fileName(media.s3Key)}
             className="h-full w-full object-cover"
+            loading="lazy"
+            decoding="async"
             onError={() => setThumbFailed(true)}
           />
         ) : (
