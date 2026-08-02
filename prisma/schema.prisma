@@ -15,9 +15,14 @@ model Media {
   caption       String?
   aiCaption     String?    @map("ai_caption")
   datetimeTaken DateTime?  @map("datetime_taken")
+  /// Set when the object was soft-deleted into the `_trash/` prefix.
+  deletedAt     DateTime?  @map("deleted_at")
+  /// Key before soft-delete; used to restore out of the recycle bin.
+  originalS3Key String?    @map("original_s3_key")
   tags          MediaTag[]
 
   @@index([datetimeTaken])
+  @@index([deletedAt])
   @@map("media")
 }
 

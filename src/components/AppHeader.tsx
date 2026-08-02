@@ -17,6 +17,14 @@ export async function AppHeader() {
             Album
           </Link>
           <div className="flex items-center gap-3 text-sm text-[var(--muted)]">
+            {session && (
+              <Link
+                href="/trash"
+                className="rounded-md border border-[var(--border)] px-3 py-1.5 transition hover:bg-[var(--surface-2)]"
+              >
+                Trash
+              </Link>
+            )}
             {session?.user?.email && (
               <span className="hidden sm:inline">{session.user.email}</span>
             )}

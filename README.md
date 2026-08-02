@@ -63,7 +63,12 @@ Open [http://localhost:3000](http://localhost:3000).
 - `/browse` — S3 bucket root
 - `/browse/Family/2024/Japan%20Trip` — nested S3 prefix
 - `/search?q=tokyo` — tags, captions (FTS), and S3 key match
+- `/trash` — recycle bin (soft-deleted objects under `_trash/`)
 - `/api/s3/object?key=…` — auth-gated redirect to a presigned S3 GET URL
+
+## Move & soft delete
+
+Browse actions can **move** files/folders (S3 copy + delete, then update `media.s3_key`) and **soft-delete** them into a reserved `_trash/<timestamp>-<id>/…` prefix. Soft-deleted items disappear from library browse/search and appear on `/trash` for restore or permanent purge. Your storage credentials need write + delete permission on the bucket (B2: `writeFiles` + `deleteFiles`).
 
 ## Data model
 
@@ -74,3 +79,17 @@ Open [http://localhost:3000](http://localhost:3000).
 | Tags, captions, AI captions, `datetime_taken` | Postgres `media` + `tags` + `media_tags`, keyed by `s3_key` |
 
 Editing a caption or tags upserts a `media` row for that S3 key. Objects with no row yet still appear in browse with empty metadata. Browse/search display and sort use `datetime_taken` (not S3 upload/`LastModified`).
+
+## Sync capture times from EXIF
+
+Populate `datetime_taken` from B2/S3 object metadata (EXIF `DateTimeOriginal`, falling back to CreateDate / QuickTime dates):
+
+```bash
+npm run sync:datetime
+# optional:
+npm run sync:datetime -- --prefix=Family/2024
+npm run sync:datetime -- --dry-run --limit=20
+npm run sync:datetime -- --force
+```
+
+Uses the same `STORAGE_PROVIDER` / AWS_* / `S3_BUCKET` / `DATABASE_URL` env vars as the app. By default, keys that already have `datetime_taken` are skipped.

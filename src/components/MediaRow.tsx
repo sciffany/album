@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { TagEditor } from "@/components/TagEditor";
 import { CaptionEditor } from "@/components/CaptionEditor";
+import { MediaActions } from "@/components/MediaActions";
 
 export type MediaItem = {
   s3Key: string;
@@ -95,6 +96,7 @@ export function MediaRow({ media }: { media: MediaItem }) {
           initialCaption={media.caption}
           aiCaption={media.aiCaption}
         />
+        <MediaActions s3Key={media.s3Key} />
       </div>
     </article>
   );

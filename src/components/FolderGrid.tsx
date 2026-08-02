@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FolderActions } from "@/components/FolderActions";
 import { MediaRow, type MediaItem } from "@/components/MediaRow";
 
 type FolderItem = {
@@ -24,31 +25,36 @@ export function FolderGrid({
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {folders.map((folder) => (
-        <Link
+        <div
           key={folder.path}
-          href={`/browse/${folder.path
-            .split("/")
-            .map(encodeURIComponent)
-            .join("/")}`}
-          className="flex items-center gap-3 rounded-lg border border-transparent p-2 transition hover:border-[var(--border)] hover:bg-[var(--surface)]/60"
+          className="rounded-lg border border-transparent p-2 transition hover:border-[var(--border)] hover:bg-[var(--surface)]/60"
         >
-          <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-md bg-[var(--folder)] sm:h-36 sm:w-36">
-            <svg
-              viewBox="0 0 24 24"
-              className="h-14 w-14 text-[var(--folder-ink)]"
-              fill="currentColor"
-              aria-hidden
-            >
-              <path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z" />
-            </svg>
-          </div>
-          <div className="min-w-0">
-            <p className="truncate font-[family-name:var(--font-display)] text-lg text-[var(--ink)]">
-              {folder.name}
-            </p>
-            <p className="text-xs text-[var(--muted)]">Folder</p>
-          </div>
-        </Link>
+          <Link
+            href={`/browse/${folder.path
+              .split("/")
+              .map(encodeURIComponent)
+              .join("/")}`}
+            className="flex items-center gap-3"
+          >
+            <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-md bg-[var(--folder)] sm:h-36 sm:w-36">
+              <svg
+                viewBox="0 0 24 24"
+                className="h-14 w-14 text-[var(--folder-ink)]"
+                fill="currentColor"
+                aria-hidden
+              >
+                <path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z" />
+              </svg>
+            </div>
+            <div className="min-w-0">
+              <p className="truncate font-[family-name:var(--font-display)] text-lg text-[var(--ink)]">
+                {folder.name}
+              </p>
+              <p className="text-xs text-[var(--muted)]">Folder</p>
+            </div>
+          </Link>
+          <FolderActions path={folder.path} name={folder.name} />
+        </div>
       ))}
       {media.map((item) => (
         <MediaRow key={item.s3Key} media={item} />

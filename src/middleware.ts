@@ -26,6 +26,7 @@ export const config = {
   matcher: [
     "/browse/:path*",
     "/search/:path*",
+    "/trash",
     "/login",
     "/api/tags/:path*",
     "/api/s3/:path*",

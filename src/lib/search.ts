@@ -17,11 +17,12 @@ export async function searchMedia({
     FROM media m
     LEFT JOIN media_tags mt ON mt.media_id = m.id
     LEFT JOIN tags t ON t.id = mt.tag_id
-    WHERE (
-      m.search_vector @@ plainto_tsquery('english', ${query})
-      OR t.text ILIKE ${"%" + query + "%"}
-      OR m.s3_key ILIKE ${"%" + query + "%"}
-    )
+    WHERE m.deleted_at IS NULL
+      AND (
+        m.search_vector @@ plainto_tsquery('english', ${query})
+        OR t.text ILIKE ${"%" + query + "%"}
+        OR m.s3_key ILIKE ${"%" + query + "%"}
+      )
     GROUP BY m.id
     ORDER BY rank DESC
     LIMIT 100

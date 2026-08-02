@@ -1,5 +1,8 @@
 import {
+  CopyObjectCommand,
+  DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   ListObjectsV2Command,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -150,4 +153,121 @@ export async function prefixExists(path: string): Promise<boolean> {
   const parent = parts.join("/");
   const parentListing = await listPrefix(parent);
   return parentListing.folders.some((f) => f.name === name);
+}
+
+/** List every object under an optional prefix (no delimiter — recursive). */
+export async function listAllObjects(path = ""): Promise<S3Object[]> {
+  const bucket = getBucket();
+  const prefix = path ? normalizePrefix(path) : "";
+  const objects: S3Object[] = [];
+  let token: string | undefined;
+
+  do {
+    const res = await getClient().send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: prefix || undefined,
+        ContinuationToken: token,
+      }),
+    );
+
+    for (const obj of res.Contents ?? []) {
+      if (!obj.Key || obj.Key.endsWith("/")) continue;
+      if (prefix && obj.Key === prefix) continue;
+      objects.push({
+        key: obj.Key,
+        lastModified: obj.LastModified ?? null,
+        size: obj.Size ?? 0,
+      });
+    }
+
+    token = res.IsTruncated ? res.NextContinuationToken : undefined;
+  } while (token);
+
+  return objects;
+}
+
+async function bodyToBuffer(
+  body: { transformToByteArray?: () => Promise<Uint8Array> } | undefined,
+): Promise<Buffer> {
+  if (!body?.transformToByteArray) {
+    throw new Error("S3 GetObject response missing body");
+  }
+  return Buffer.from(await body.transformToByteArray());
+}
+
+/**
+ * Download object bytes. Pass `byteLength` to fetch only the leading range
+ * (useful for EXIF, which usually lives near the start of the file).
+ */
+export async function getObjectBytes(
+  key: string,
+  opts?: { byteLength?: number },
+): Promise<Buffer> {
+  const bucket = getBucket();
+  const range =
+    opts?.byteLength && opts.byteLength > 0
+      ? `bytes=0-${opts.byteLength - 1}`
+      : undefined;
+
+  const res = await getClient().send(
+    new GetObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Range: range,
+    }),
+  );
+
+  return bodyToBuffer(res.Body);
+}
+
+export async function objectExists(key: string): Promise<boolean> {
+  const bucket = getBucket();
+  try {
+    await getClient().send(
+      new HeadObjectCommand({ Bucket: bucket, Key: key }),
+    );
+    return true;
+  } catch (err) {
+    const status = (err as { $metadata?: { httpStatusCode?: number } })
+      .$metadata?.httpStatusCode;
+    const name = (err as { name?: string }).name;
+    if (status === 404 || name === "NotFound" || name === "NoSuchKey") {
+      return false;
+    }
+    throw err;
+  }
+}
+
+export async function copyObject(fromKey: string, toKey: string): Promise<void> {
+  if (fromKey === toKey) return;
+  const bucket = getBucket();
+  const encodedKey = fromKey
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+  await getClient().send(
+    new CopyObjectCommand({
+      Bucket: bucket,
+      CopySource: `${bucket}/${encodedKey}`,
+      Key: toKey,
+    }),
+  );
+}
+
+export async function deleteObject(key: string): Promise<void> {
+  const bucket = getBucket();
+  await getClient().send(
+    new DeleteObjectCommand({ Bucket: bucket, Key: key }),
+  );
+}
+
+/**
+ * S3 has no rename — copy then delete source.
+ * Caller is responsible for updating any DB references between copy and delete.
+ */
+export async function moveObject(fromKey: string, toKey: string): Promise<void> {
+  if (fromKey === toKey) return;
+  await copyObject(fromKey, toKey);
+  await deleteObject(fromKey);
 }

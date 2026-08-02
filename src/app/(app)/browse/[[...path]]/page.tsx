@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { FolderBreadcrumb } from "@/components/FolderBreadcrumb";
 import { FolderGrid } from "@/components/FolderGrid";
 import {
@@ -7,6 +7,7 @@ import {
   listFolderContents,
   pathFromSegments,
 } from "@/lib/folders";
+import { isTrashFolderPath } from "@/lib/storage-keys";
 
 export default async function BrowsePage({
   params,
@@ -15,6 +16,10 @@ export default async function BrowsePage({
 }) {
   const { path: segments } = await params;
   const path = pathFromSegments(segments);
+
+  if (isTrashFolderPath(path)) {
+    redirect("/trash");
+  }
 
   if (path && !(await assertPrefixExists(path))) {
     notFound();

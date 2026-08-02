@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { listPrefix, prefixExists, type S3Folder } from "@/lib/s3";
+import { isTrashFolderPath, TRASH_ROOT } from "@/lib/storage-keys";
 
 const MEDIA_EXT = new Set([
   "jpg",
@@ -70,8 +71,17 @@ export async function listFolderContents(path: string): Promise<{
   folders: FolderItem[];
   media: MediaListItem[];
 }> {
-  const { folders, objects } = await listPrefix(path);
-  const mediaObjects = objects.filter((o) => isMediaKey(o.key));
+  if (isTrashFolderPath(path)) {
+    return { folders: [], media: [] };
+  }
+
+  const { folders: rawFolders, objects } = await listPrefix(path);
+  const folders = rawFolders.filter(
+    (f) => !(path === "" && f.name === TRASH_ROOT),
+  );
+  const mediaObjects = objects.filter(
+    (o) => isMediaKey(o.key) && !isTrashFolderPath(o.key),
+  );
   const keys = mediaObjects.map((o) => o.key);
 
   const meta =
