@@ -81,8 +81,16 @@ export function MediaActions({
     ? `${folderPath}/${newName.trim() || name}`
     : newName.trim() || name;
 
+  const downloadHref = `/api/s3/object?key=${encodeURIComponent(s3Key)}&download=1&filename=${encodeURIComponent(name)}`;
+
   return (
     <div className="flex flex-wrap items-center gap-2">
+      <a
+        href={downloadHref}
+        className="rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--ink)] transition hover:bg-[var(--surface-2)]"
+      >
+        Download
+      </a>
       <button
         type="button"
         onClick={onRenameOpen}

@@ -122,11 +122,20 @@ export function FolderActions({
       : newName.trim()
     : path;
 
+  const downloadHref = `/api/download/folder?path=${encodeURIComponent(path)}`;
+
   return (
     <div
       className="mt-2 flex flex-wrap items-center gap-2"
       onClick={(e) => e.preventDefault()}
     >
+      <a
+        href={downloadHref}
+        onClick={(e) => e.stopPropagation()}
+        className="rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--ink)] transition hover:bg-[var(--surface-2)]"
+      >
+        Download
+      </a>
       <button
         type="button"
         onClick={onRenameOpen}

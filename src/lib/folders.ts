@@ -1,6 +1,9 @@
 import { isMediaKey } from "@/lib/media-types";
 import { prisma } from "@/lib/prisma";
-import { isTrashFolderPath } from "@/lib/storage-keys";
+import {
+  assertValidFolderPath,
+  isTrashFolderPath,
+} from "@/lib/storage-keys";
 
 export type FolderItem = {
   name: string;
@@ -114,4 +117,87 @@ export async function listFolderContents(path: string): Promise<{
     folders: childFolders.map((f) => ({ name: f.name, path: f.path })),
     media,
   };
+}
+
+export type FolderDownloadEntry = {
+  /** Path inside the zip, relative to the archive root (includes folder leaf name). */
+  zipPath: string;
+  s3Key: string;
+};
+
+/**
+ * Resolve every active media file under a folder (recursive) for zip download.
+ * Zip paths are rooted at the folder's leaf name, e.g. `Vacation/day1/a.jpg`.
+ */
+export async function listFolderDownloadEntries(
+  folderPath: string,
+): Promise<{ folderName: string; entries: FolderDownloadEntry[] }> {
+  const path = assertValidFolderPath(folderPath || "", "folder path");
+  if (!path || isTrashFolderPath(path)) {
+    throw new Error("Folder not found");
+  }
+
+  const folder = await prisma.folder.findFirst({
+    where: { path, deletedAt: null },
+    select: { id: true, name: true, path: true },
+  });
+  if (!folder) {
+    throw new Error("Folder not found");
+  }
+
+  const descendantFolders = await prisma.folder.findMany({
+    where: {
+      deletedAt: null,
+      OR: [{ path }, { path: { startsWith: `${path}/` } }],
+    },
+    select: { id: true, path: true },
+  });
+
+  const folderById = new Map(
+    descendantFolders.map((f) => [f.id, f.path] as const),
+  );
+  const folderIds = descendantFolders.map((f) => f.id);
+
+  const mediaRows = await prisma.media.findMany({
+    where: { folderId: { in: folderIds }, deletedAt: null },
+    select: { name: true, s3Key: true, folderId: true },
+    orderBy: { name: "asc" },
+  });
+
+  const prefix = `${path}/`;
+  const entries: FolderDownloadEntry[] = [];
+  const usedZipPaths = new Set<string>();
+
+  for (const row of mediaRows) {
+    if (!row.folderId) continue;
+    const mediaFolderPath = folderById.get(row.folderId);
+    if (mediaFolderPath === undefined) continue;
+
+    const relative =
+      mediaFolderPath === path
+        ? row.name
+        : mediaFolderPath.startsWith(prefix)
+          ? `${mediaFolderPath.slice(prefix.length)}/${row.name}`
+          : row.name;
+
+    let zipPath = `${folder.name}/${relative}`;
+    if (usedZipPaths.has(zipPath)) {
+      const dot = row.name.lastIndexOf(".");
+      const stem = dot > 0 ? row.name.slice(0, dot) : row.name;
+      const ext = dot > 0 ? row.name.slice(dot) : "";
+      let n = 2;
+      do {
+        const altName = `${stem} (${n})${ext}`;
+        zipPath =
+          mediaFolderPath === path
+            ? `${folder.name}/${altName}`
+            : `${folder.name}/${mediaFolderPath.slice(prefix.length)}/${altName}`;
+        n += 1;
+      } while (usedZipPaths.has(zipPath));
+    }
+    usedZipPaths.add(zipPath);
+    entries.push({ zipPath, s3Key: row.s3Key });
+  }
+
+  return { folderName: folder.name, entries };
 }

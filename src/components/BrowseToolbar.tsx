@@ -205,6 +205,14 @@ export function BrowseToolbar({ path }: Props) {
         >
           Upload folder
         </button>
+        {path ? (
+          <a
+            href={`/api/download/folder?path=${encodeURIComponent(path)}`}
+            className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-sm text-[var(--ink)] transition hover:bg-[var(--surface-2)]"
+          >
+            Download folder
+          </a>
+        ) : null}
         <input
           ref={fileInputRef}
           type="file"

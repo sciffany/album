@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getBucket, presignGetObject } from "@/lib/s3";
 
+function sanitizeDownloadFileName(name: string): string {
+  const base = name.split(/[/\\]/).pop()?.trim() || "download";
+  return base.replace(/["\\\r\n]/g, "_") || "download";
+}
+
 export async function GET(request: Request) {
   const session = await auth();
   if (!session?.user) {
@@ -15,8 +20,11 @@ export async function GET(request: Request) {
   }
 
   const download = url.searchParams.get("download") === "1";
+  const requestedName = url.searchParams.get("filename")?.trim();
   const downloadFileName = download
-    ? (key.split("/").pop() || "download")
+    ? sanitizeDownloadFileName(
+        requestedName || key.split("/").pop() || "download",
+      )
     : undefined;
 
   try {

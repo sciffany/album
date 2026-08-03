@@ -34,7 +34,6 @@ export function OtherFileRow({
   const name = baseNameFromKey(file.s3Key);
   const ext = extFromKey(file.s3Key);
   const objectHref = `/api/s3/object?key=${encodeURIComponent(file.s3Key)}`;
-  const downloadHref = `${objectHref}&download=1`;
   const sizeLabel = formatSize(file.size);
 
   return (
@@ -90,19 +89,11 @@ export function OtherFileRow({
             {sizeLabel ? ` · ${sizeLabel}` : ""}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <a
-            href={downloadHref}
-            className="rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--ink)] transition hover:bg-[var(--surface-2)]"
-          >
-            Download
-          </a>
-          <MediaActions
-            s3Key={file.s3Key}
-            name={name}
-            folderPath={parentFolder(file.s3Key)}
-          />
-        </div>
+        <MediaActions
+          s3Key={file.s3Key}
+          name={name}
+          folderPath={parentFolder(file.s3Key)}
+        />
       </div>
     </article>
   );

@@ -30,5 +30,6 @@ export const config = {
     "/login",
     "/api/tags/:path*",
     "/api/s3/:path*",
+    "/api/download/:path*",
   ],
 };

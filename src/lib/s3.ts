@@ -8,6 +8,7 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import type { Readable } from "node:stream";
 
 let client: S3Client | null = null;
 
@@ -274,6 +275,21 @@ export async function getObjectBytes(
   );
 
   return bodyToBuffer(res.Body);
+}
+
+/** Stream an object body (Node Readable) for piping into zip archives, etc. */
+export async function getObjectReadable(key: string): Promise<Readable> {
+  const bucket = getBucket();
+  const res = await getClient().send(
+    new GetObjectCommand({
+      Bucket: bucket,
+      Key: key,
+    }),
+  );
+  if (!res.Body) {
+    throw new Error("S3 GetObject response missing body");
+  }
+  return res.Body as Readable;
 }
 
 export async function objectExists(key: string): Promise<boolean> {
