@@ -1,13 +1,13 @@
 "use client";
 
 import {
-  useEffect,
   useState,
   useTransition,
   type FormEvent,
 } from "react";
 import { useRouter } from "next/navigation";
-import { listFoldersAction, moveMediaAction } from "@/lib/actions";
+import { moveMediaAction } from "@/lib/actions";
+import { DestinationFolderPicker } from "@/components/DestinationFolderPicker";
 import { parentFolder, baseName } from "@/lib/storage-keys";
 
 function MoveMediaForm({
@@ -20,23 +20,8 @@ function MoveMediaForm({
   const router = useRouter();
   const [folder, setFolder] = useState(() => parentFolder(s3Key));
   const [name, setName] = useState(() => baseName(s3Key));
-  const [children, setChildren] = useState<string[]>([]);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    listFoldersAction(folder)
-      .then((paths) => {
-        if (!cancelled) setChildren(paths);
-      })
-      .catch(() => {
-        if (!cancelled) setChildren([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [folder]);
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -74,38 +59,9 @@ function MoveMediaForm({
         </h2>
         <p className="mt-1 truncate text-xs text-[var(--muted)]">{s3Key}</p>
 
-        <label className="mt-4 block text-xs font-medium text-[var(--muted)]">
-          Destination folder
-          <input
-            value={folder}
-            onChange={(e) => setFolder(e.target.value)}
-            placeholder="e.g. Family/2024 (empty = root)"
-            className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-sm outline-none ring-[var(--accent)] focus:ring-2"
-          />
-        </label>
-
-        {children.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            <button
-              type="button"
-              onClick={() => setFolder(parentFolder(folder))}
-              disabled={!folder}
-              className="rounded border border-[var(--border)] px-2 py-0.5 text-xs text-[var(--muted)] disabled:opacity-40"
-            >
-              Up
-            </button>
-            {children.map((path) => (
-              <button
-                key={path}
-                type="button"
-                onClick={() => setFolder(path)}
-                className="rounded border border-[var(--border)] px-2 py-0.5 text-xs text-[var(--ink)] hover:bg-[var(--surface-2)]"
-              >
-                {path.split("/").pop()}
-              </button>
-            ))}
-          </div>
-        )}
+        <div className="mt-4">
+          <DestinationFolderPicker folder={folder} onFolderChange={setFolder} />
+        </div>
 
         <label className="mt-3 block text-xs font-medium text-[var(--muted)]">
           File name

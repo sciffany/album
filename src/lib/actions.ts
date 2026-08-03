@@ -18,7 +18,8 @@ import {
 } from "@/lib/media-ops";
 import { prisma } from "@/lib/prisma";
 import { getBucket, objectExists, presignPutObject } from "@/lib/s3";
-import { findOrCreateTags } from "@/lib/tags";
+import { baseName, normalizeFolderPath } from "@/lib/storage-keys";
+import { findOrCreateTags, slugifyTag } from "@/lib/tags";
 
 async function requireUser() {
   const session = await auth();
@@ -105,6 +106,123 @@ export async function moveFolderAction(fromPath: string, toPath: string) {
   const result = await moveFolderPrefix(fromPath, toPath);
   revalidateLibrary();
   return result;
+}
+
+/** Move many files and folders; continues after per-item failures. */
+export async function moveItemsBulkAction(
+  items: { files: string[]; folders: string[] },
+  destinationFolder: string,
+) {
+  await requireUser();
+  const dest = normalizeFolderPath(destinationFolder || "");
+  let moved = 0;
+  const errors: { key: string; message: string }[] = [];
+
+  for (const path of items.folders) {
+    try {
+      const name = baseName(path);
+      const toPath = dest ? `${dest}/${name}` : name;
+      await moveFolderPrefix(path, toPath);
+      moved += 1;
+    } catch (err) {
+      errors.push({
+        key: path,
+        message: actionError(err, "Could not move folder"),
+      });
+    }
+  }
+
+  for (const key of items.files) {
+    try {
+      await moveMediaToFolder(key, dest);
+      moved += 1;
+    } catch (err) {
+      errors.push({
+        key,
+        message: actionError(err, "Could not move file"),
+      });
+    }
+  }
+
+  revalidateLibrary();
+  return { moved, errors };
+}
+
+export async function addMediaTagsBulk(s3Keys: string[], tagTexts: string[]) {
+  await requireUser();
+  const tags = await findOrCreateTags(tagTexts);
+  if (tags.length === 0 || s3Keys.length === 0) {
+    return;
+  }
+
+  const mediaRows = [];
+  for (const key of s3Keys) {
+    mediaRows.push(await ensureMedia(key));
+  }
+
+  const existing = await prisma.mediaTag.findMany({
+    where: {
+      mediaId: { in: mediaRows.map((m) => m.id) },
+      tagId: { in: tags.map((t) => t.id) },
+    },
+  });
+  const existingSet = new Set(
+    existing.map((row) => `${row.mediaId}:${row.tagId}`),
+  );
+
+  const toCreate = [];
+  for (const media of mediaRows) {
+    for (const tag of tags) {
+      const pair = `${media.id}:${tag.id}`;
+      if (!existingSet.has(pair)) {
+        toCreate.push({ mediaId: media.id, tagId: tag.id });
+      }
+    }
+  }
+
+  if (toCreate.length > 0) {
+    await prisma.mediaTag.createMany({
+      data: toCreate,
+      skipDuplicates: true,
+    });
+  }
+
+  revalidateLibrary();
+}
+
+export async function removeMediaTagsBulk(
+  s3Keys: string[],
+  tagTexts: string[],
+) {
+  await requireUser();
+  if (s3Keys.length === 0 || tagTexts.length === 0) {
+    return;
+  }
+
+  const slugs = [
+    ...new Set(
+      tagTexts
+        .map((t) => slugifyTag(t))
+        .filter((slug): slug is string => Boolean(slug)),
+    ),
+  ];
+  if (slugs.length === 0) return;
+
+  const [tags, mediaRows] = await Promise.all([
+    prisma.tag.findMany({ where: { slug: { in: slugs } } }),
+    prisma.media.findMany({ where: { s3Key: { in: s3Keys } } }),
+  ]);
+
+  if (tags.length === 0 || mediaRows.length === 0) return;
+
+  await prisma.mediaTag.deleteMany({
+    where: {
+      mediaId: { in: mediaRows.map((m) => m.id) },
+      tagId: { in: tags.map((t) => t.id) },
+    },
+  });
+
+  revalidateLibrary();
 }
 
 export async function renameMediaAction(fromKey: string, newName: string) {
