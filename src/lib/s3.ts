@@ -173,18 +173,25 @@ export async function listPrefix(path: string): Promise<S3PrefixListing> {
   return { folders, objects };
 }
 
-/** True if the prefix has any children (folders or objects). Root always exists. */
+/**
+ * True if the prefix exists (any key under it, including a folder marker).
+ * Uses MaxKeys=1 — do not call this before listPrefix on the same path;
+ * list first and only probe when the listing is empty.
+ */
 export async function prefixExists(path: string): Promise<boolean> {
   if (!path) return true;
-  const { folders, objects } = await listPrefix(path);
-  if (folders.length > 0 || objects.length > 0) return true;
+  const bucket = getBucket();
+  const prefix = normalizePrefix(path);
 
-  // Empty leaf prefix: check whether parent lists this name as a common prefix.
-  const parts = path.split("/");
-  const name = parts.pop()!;
-  const parent = parts.join("/");
-  const parentListing = await listPrefix(parent);
-  return parentListing.folders.some((f) => f.name === name);
+  const res = await getClient().send(
+    new ListObjectsV2Command({
+      Bucket: bucket,
+      Prefix: prefix,
+      MaxKeys: 1,
+    }),
+  );
+
+  return (res.Contents?.length ?? 0) > 0;
 }
 
 /** List every object under an optional prefix (no delimiter — recursive). */
