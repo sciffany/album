@@ -9,6 +9,7 @@ import {
 import { useRouter } from "next/navigation";
 import {
   moveFolderAction,
+  renameFolderAction,
   softDeleteFolderAction,
 } from "@/lib/actions";
 import { parentFolder } from "@/lib/storage-keys";
@@ -22,7 +23,9 @@ export function FolderActions({
 }) {
   const router = useRouter();
   const [moveOpen, setMoveOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
   const [destination, setDestination] = useState("");
+  const [newName, setNewName] = useState(name);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -61,6 +64,14 @@ export function FolderActions({
     setMoveOpen(true);
   }
 
+  function onRenameOpen(e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setNewName(name);
+    setError(null);
+    setRenameOpen(true);
+  }
+
   function submitMove(e: FormEvent) {
     e.preventDefault();
     e.stopPropagation();
@@ -78,11 +89,52 @@ export function FolderActions({
     });
   }
 
+  function submitRename(e: FormEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setError(null);
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === name) {
+      setRenameOpen(false);
+      return;
+    }
+    startTransition(async () => {
+      try {
+        const result = await renameFolderAction(path, trimmed);
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        setRenameOpen(false);
+        router.refresh();
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Could not rename folder",
+        );
+      }
+    });
+  }
+
+  const parent = parentFolder(path);
+  const previewPath = newName.trim()
+    ? parent
+      ? `${parent}/${newName.trim()}`
+      : newName.trim()
+    : path;
+
   return (
     <div
       className="mt-2 flex flex-wrap items-center gap-2"
       onClick={(e) => e.preventDefault()}
     >
+      <button
+        type="button"
+        onClick={onRenameOpen}
+        disabled={pending}
+        className="rounded-md border border-[var(--border)] px-2 py-1 text-xs text-[var(--ink)] transition hover:bg-[var(--surface-2)] disabled:opacity-50"
+      >
+        Rename
+      </button>
       <button
         type="button"
         onClick={onMoveOpen}
@@ -100,6 +152,62 @@ export function FolderActions({
         {pending ? "Working…" : "Delete"}
       </button>
       {error && <p className="w-full text-xs text-red-700">{error}</p>}
+
+      {renameOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
+          role="dialog"
+          aria-modal="true"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !pending) setRenameOpen(false);
+          }}
+        >
+          <form
+            onSubmit={submitRename}
+            className="w-full max-w-md rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="font-[family-name:var(--font-display)] text-xl text-[var(--ink)]">
+              Rename folder
+            </h2>
+            <p className="mt-1 text-xs text-[var(--muted)]">
+              Renaming <span className="text-[var(--ink)]">{path}</span>
+            </p>
+            <label className="mt-4 block text-xs font-medium text-[var(--muted)]">
+              Folder name
+              <input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                required
+                autoFocus
+                className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-sm outline-none ring-[var(--accent)] focus:ring-2"
+              />
+            </label>
+            <p className="mt-2 text-xs text-[var(--muted)]">
+              New path:{" "}
+              <span className="text-[var(--ink)]">{previewPath}</span>
+            </p>
+            {error && <p className="mt-2 text-xs text-red-700">{error}</p>}
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRenameOpen(false)}
+                disabled={pending}
+                className="rounded-md border border-[var(--border)] px-3 py-1.5 text-sm hover:bg-[var(--surface-2)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={pending || !newName.trim()}
+                className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-sm text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+              >
+                {pending ? "Renaming…" : "Rename"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {moveOpen && (
         <div

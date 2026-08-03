@@ -8,6 +8,8 @@ import {
   moveFolderPrefix,
   moveMediaToFolder,
   purgeMediaObject,
+  renameFolder,
+  renameMedia,
   resolveUploadKeys,
   restoreMediaObject,
   softDeleteFolderPrefix,
@@ -103,6 +105,34 @@ export async function moveFolderAction(fromPath: string, toPath: string) {
   const result = await moveFolderPrefix(fromPath, toPath);
   revalidateLibrary();
   return result;
+}
+
+export async function renameMediaAction(fromKey: string, newName: string) {
+  await requireUser();
+  try {
+    const result = await renameMedia(fromKey, newName);
+    revalidateLibrary();
+    return { ok: true as const, ...result };
+  } catch (err) {
+    return {
+      ok: false as const,
+      error: actionError(err, "Could not rename file"),
+    };
+  }
+}
+
+export async function renameFolderAction(fromPath: string, newName: string) {
+  await requireUser();
+  try {
+    const result = await renameFolder(fromPath, newName);
+    revalidateLibrary();
+    return { ok: true as const, ...result };
+  } catch (err) {
+    return {
+      ok: false as const,
+      error: actionError(err, "Could not rename folder"),
+    };
+  }
 }
 
 function actionError(err: unknown, fallback: string) {

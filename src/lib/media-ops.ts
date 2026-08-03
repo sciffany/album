@@ -12,6 +12,7 @@ import {
   assertValidFolderName,
   assertValidFolderPath,
   assertValidKey,
+  baseName,
   folderMarkerKey,
   isTrashKey,
   joinKey,
@@ -19,6 +20,7 @@ import {
   makeTrashKey,
   normalizeFolderPath,
   originalKeyFromTrashKey,
+  parentFolder,
   TRASH_ROOT,
 } from "@/lib/storage-keys";
 
@@ -230,6 +232,42 @@ export async function moveMediaToFolder(
   const name = (fileName ?? from.split("/").pop() ?? from).trim();
   const to = joinKey(folder, name);
   return moveMediaObject(from, to);
+}
+
+/** Rename a media object in place (same parent folder). */
+export async function renameMedia(
+  fromKey: string,
+  newName: string,
+): Promise<{ fromKey: string; toKey: string }> {
+  const from = assertValidKey(fromKey, "source key");
+  if (baseName(from) === newName.trim()) {
+    return { fromKey: from, toKey: from };
+  }
+  return moveMediaToFolder(from, parentFolder(from), newName);
+}
+
+/** Rename a folder in place (same parent path). */
+export async function renameFolder(
+  fromPath: string,
+  newName: string,
+): Promise<{ fromPath: string; toPath: string; moved: number }> {
+  const from = assertValidFolderPath(fromPath, "source folder");
+  if (!from) throw new Error("Cannot rename the bucket root");
+
+  const name = assertValidFolderName(newName);
+  const parent = parentFolder(from);
+  const to = parent ? `${parent}/${name}` : name;
+  assertValidFolderPath(to, "destination folder");
+
+  if (from === to) {
+    return { fromPath: from, toPath: to, moved: 0 };
+  }
+  if (await prefixExistsOrMarker(to)) {
+    throw new Error("A folder with that name already exists");
+  }
+
+  const result = await moveFolderPrefix(from, to);
+  return { fromPath: from, toPath: to, ...result };
 }
 
 /**
