@@ -248,46 +248,56 @@ export async function renameMedia(
 }
 
 /**
- * Rewrite materialized `path` for a folder and its descendants.
- * Uses a batch `$transaction([...])` (not interactive) so it works with
- * Neon's pooled DATABASE_URL / PgBouncer transaction mode.
+ * Rewrite materialized `path` for a folder and its descendants in one UPDATE.
+ * (Per-row Prisma updates were O(n) round-trips and made large moves slow.)
  */
 async function rewriteFolderSubtreePaths(
   from: string,
   to: string,
   rootUpdate: { id: string; name: string; parentId?: string | null },
 ): Promise<number> {
-  const descendants = await prisma.folder.findMany({
-    where: {
-      OR: [{ path: from }, { path: { startsWith: `${from}/` } }],
-    },
-    select: { id: true, path: true },
-  });
+  const likePrefix = `${from}/%`;
 
-  await prisma.$transaction(
-    descendants.map((row) => {
-      const next =
-        row.path === from ? to : `${to}${row.path.slice(from.length)}`;
-      if (row.id === rootUpdate.id) {
-        return prisma.folder.update({
-          where: { id: row.id },
-          data: {
-            path: next,
-            name: rootUpdate.name,
-            ...(rootUpdate.parentId !== undefined
-              ? { parentId: rootUpdate.parentId }
-              : {}),
-          },
-        });
-      }
-      return prisma.folder.update({
-        where: { id: row.id },
-        data: { path: next },
-      });
-    }),
+  // Single statement: rewrite every matching path, and set the moved/renamed
+  // folder's name (+ parent when moving). Soft-deleted descendants are included,
+  // matching the previous findMany (no deletedAt filter).
+  if (rootUpdate.parentId !== undefined) {
+    return Number(
+      await prisma.$executeRaw`
+        UPDATE folders
+        SET
+          path = CASE
+            WHEN path = ${from} THEN ${to}
+            ELSE ${to} || substring(path FROM char_length(${from}) + 1)
+          END,
+          name = CASE
+            WHEN id = ${rootUpdate.id} THEN ${rootUpdate.name}
+            ELSE name
+          END,
+          parent_id = CASE
+            WHEN id = ${rootUpdate.id} THEN ${rootUpdate.parentId}
+            ELSE parent_id
+          END
+        WHERE path = ${from} OR path LIKE ${likePrefix}
+      `,
+    );
+  }
+
+  return Number(
+    await prisma.$executeRaw`
+      UPDATE folders
+      SET
+        path = CASE
+          WHEN path = ${from} THEN ${to}
+          ELSE ${to} || substring(path FROM char_length(${from}) + 1)
+        END,
+        name = CASE
+          WHEN id = ${rootUpdate.id} THEN ${rootUpdate.name}
+          ELSE name
+        END
+      WHERE path = ${from} OR path LIKE ${likePrefix}
+    `,
   );
-
-  return descendants.length;
 }
 
 /** Rename a folder in place (same parent path). */
