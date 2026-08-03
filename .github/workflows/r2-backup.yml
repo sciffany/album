@@ -1,0 +1,41 @@
+name: Weekly R2 Backup
+on:
+  schedule:
+    - cron: "0 3 * * 0" # Sunday 3am UTC
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install rclone
+        run: curl https://rclone.org/install.sh | sudo bash
+
+      - name: Configure rclone
+        run: |
+          mkdir -p ~/.config/rclone
+          cat > ~/.config/rclone/rclone.conf << EOF
+          [r2]
+          type = s3
+          provider = Cloudflare
+          access_key_id = ${{ secrets.R2_ACCESS_KEY }}
+          secret_access_key = ${{ secrets.R2_SECRET_KEY }}
+          endpoint = ${{ secrets.R2_ENDPOINT }}
+
+          [s3]
+          type = s3
+          provider = AWS
+          access_key_id = ${{ secrets.AWS_ACCESS_KEY }}
+          secret_access_key = ${{ secrets.AWS_SECRET_KEY }}
+          region = ap-southeast-1
+          EOF
+
+      - name: Sync R2 to S3
+        env:
+          BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
+        run: rclone sync "r2:${BUCKET_NAME}" "s3:${BUCKET_NAME}" --progress
+
+      - name: Verify sync
+        env:
+          BUCKET_NAME: ${{ secrets.BUCKET_NAME }}
+        run: rclone check "r2:${BUCKET_NAME}" "s3:${BUCKET_NAME}" --one-way
