@@ -7,6 +7,7 @@ import {
   ensureFolderPath,
   listChildFolderPaths,
   moveFolderPrefix,
+  moveMediaBulkToFolder,
   moveMediaToFolder,
   purgeMediaObject,
   renameFolder,
@@ -135,16 +136,10 @@ export async function moveItemsBulkAction(
     }
   }
 
-  for (const key of items.files) {
-    try {
-      await moveMediaToFolder(key, dest);
-      moved += 1;
-    } catch (err) {
-      errors.push({
-        key,
-        message: actionError(err, "Could not move file"),
-      });
-    }
+  if (items.files.length > 0) {
+    const fileResult = await moveMediaBulkToFolder(items.files, dest);
+    moved += fileResult.moved;
+    errors.push(...fileResult.errors);
   }
 
   revalidateLibrary();

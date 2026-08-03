@@ -225,6 +225,106 @@ export async function moveMediaToFolder(
   return { fromKey: from, toKey: from };
 }
 
+/**
+ * Move many media rows into one destination folder in a few queries.
+ * Continues after per-item failures (missing keys, name collisions).
+ */
+export async function moveMediaBulkToFolder(
+  fromKeys: string[],
+  destinationFolder: string,
+): Promise<{ moved: number; errors: { key: string; message: string }[] }> {
+  const errors: { key: string; message: string }[] = [];
+  if (fromKeys.length === 0) return { moved: 0, errors };
+
+  const folder = assertValidFolderPath(destinationFolder || "");
+  const folderId = await ensureFolderPath(folder);
+
+  const validKeys: string[] = [];
+  const seenKeys = new Set<string>();
+  for (const fromKey of fromKeys) {
+    try {
+      const key = assertValidKey(fromKey, "source key");
+      if (seenKeys.has(key)) continue;
+      seenKeys.add(key);
+      validKeys.push(key);
+    } catch (err) {
+      errors.push({
+        key: fromKey,
+        message: err instanceof Error ? err.message : "Invalid source key",
+      });
+    }
+  }
+
+  if (validKeys.length === 0) return { moved: 0, errors };
+
+  const mediaRows = await prisma.media.findMany({
+    where: { s3Key: { in: validKeys } },
+    select: {
+      id: true,
+      s3Key: true,
+      name: true,
+      deletedAt: true,
+    },
+  });
+  const byKey = new Map(mediaRows.map((row) => [row.s3Key, row]));
+
+  const candidates: { id: string; s3Key: string; name: string }[] = [];
+  for (const key of validKeys) {
+    const media = byKey.get(key);
+    if (!media || media.deletedAt) {
+      errors.push({ key, message: "File not found" });
+      continue;
+    }
+    candidates.push({ id: media.id, s3Key: media.s3Key, name: media.name });
+  }
+
+  if (candidates.length === 0) return { moved: 0, errors };
+
+  const candidateIds = candidates.map((c) => c.id);
+  const candidateNames = [...new Set(candidates.map((c) => c.name))];
+  const clashes = await prisma.media.findMany({
+    where: {
+      folderId,
+      deletedAt: null,
+      name: { in: candidateNames },
+      id: { notIn: candidateIds },
+    },
+    select: { name: true },
+  });
+  const takenNames = new Set(clashes.map((row) => row.name));
+
+  const toMoveIds: string[] = [];
+  const seenNames = new Set<string>();
+  for (const candidate of candidates) {
+    try {
+      const name = assertValidFileName(candidate.name);
+      if (takenNames.has(name) || seenNames.has(name)) {
+        errors.push({
+          key: candidate.s3Key,
+          message: `A file named “${name}” already exists in this folder`,
+        });
+        continue;
+      }
+      seenNames.add(name);
+      toMoveIds.push(candidate.id);
+    } catch (err) {
+      errors.push({
+        key: candidate.s3Key,
+        message: err instanceof Error ? err.message : "Could not move file",
+      });
+    }
+  }
+
+  if (toMoveIds.length === 0) return { moved: 0, errors };
+
+  const updated = await prisma.media.updateMany({
+    where: { id: { in: toMoveIds }, deletedAt: null },
+    data: { folderId },
+  });
+
+  return { moved: updated.count, errors };
+}
+
 /** Rename a media object in place (same parent folder). */
 export async function renameMedia(
   fromKey: string,
