@@ -23,11 +23,12 @@ export default async function BrowsePage({
   }
 
   // List once — existence check only when empty (avoids a second full S3 list).
-  const { folders, media } = await listFolderContents(path);
+  const { folders, media, otherFiles } = await listFolderContents(path);
   if (
     path &&
     folders.length === 0 &&
     media.length === 0 &&
+    otherFiles.length === 0 &&
     !(await assertPrefixExists(path))
   ) {
     notFound();
@@ -46,7 +47,7 @@ export default async function BrowsePage({
           <BrowseToolbar path={path} />
         </div>
       </div>
-      <FolderGrid folders={folders} media={media} />
+      <FolderGrid folders={folders} media={media} otherFiles={otherFiles} />
     </div>
   );
 }

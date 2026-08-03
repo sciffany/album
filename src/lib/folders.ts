@@ -1,4 +1,4 @@
-import { isMediaKey } from "@/lib/media-types";
+import { isBrowsableObjectKey, isMediaKey } from "@/lib/media-types";
 import { prisma } from "@/lib/prisma";
 import { listPrefix, prefixExists, type S3Folder } from "@/lib/s3";
 import { isTrashFolderPath, TRASH_ROOT } from "@/lib/storage-keys";
@@ -12,6 +12,12 @@ export type MediaListItem = {
   caption: string | null;
   aiCaption: string | null;
   tags: { tag: { id: string; text: string } }[];
+};
+
+export type OtherFileItem = {
+  s3Key: string;
+  size: number;
+  lastModified: Date | null;
 };
 
 export function pathFromSegments(segments: string[] | undefined): string {
@@ -32,6 +38,7 @@ export function breadcrumbFromPath(path: string) {
 }
 
 export function mediaTypeFromKey(key: string): string {
+  if (!isMediaKey(key)) return "file";
   const ext = key.split(".").pop()?.toLowerCase() ?? "";
   if (["mp4", "mov", "m4v", "webm", "mkv", "avi"].includes(ext)) return "video";
   if (["gif"].includes(ext)) return "meme";
@@ -45,18 +52,21 @@ export async function assertPrefixExists(path: string) {
 export async function listFolderContents(path: string): Promise<{
   folders: FolderItem[];
   media: MediaListItem[];
+  otherFiles: OtherFileItem[];
 }> {
   if (isTrashFolderPath(path)) {
-    return { folders: [], media: [] };
+    return { folders: [], media: [], otherFiles: [] };
   }
 
   const { folders: rawFolders, objects } = await listPrefix(path);
   const folders = rawFolders.filter(
     (f) => !(path === "" && f.name === TRASH_ROOT),
   );
-  const mediaObjects = objects.filter(
-    (o) => isMediaKey(o.key) && !isTrashFolderPath(o.key),
+  const browsable = objects.filter(
+    (o) => isBrowsableObjectKey(o.key) && !isTrashFolderPath(o.key),
   );
+  const mediaObjects = browsable.filter((o) => isMediaKey(o.key));
+  const otherObjects = browsable.filter((o) => !isMediaKey(o.key));
   const keys = mediaObjects.map((o) => o.key);
 
   const meta =
@@ -88,5 +98,11 @@ export async function listFolderContents(path: string): Promise<{
     return a.s3Key.localeCompare(b.s3Key);
   });
 
-  return { folders, media };
+  const otherFiles: OtherFileItem[] = otherObjects.map((obj) => ({
+    s3Key: obj.key,
+    size: obj.size,
+    lastModified: obj.lastModified,
+  }));
+
+  return { folders, media, otherFiles };
 }

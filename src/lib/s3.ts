@@ -66,8 +66,18 @@ export async function presignGetObject(
   bucket: string,
   key: string,
   expiresIn = 60 * 60,
+  opts?: { downloadFileName?: string },
 ) {
-  const command = new GetObjectCommand({ Bucket: bucket, Key: key });
+  const fileName = opts?.downloadFileName?.trim();
+  const command = new GetObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    ...(fileName
+      ? {
+          ResponseContentDisposition: `attachment; filename="${fileName.replace(/["\\\r\n]/g, "_")}"`,
+        }
+      : {}),
+  });
   return getSignedUrl(getClient(), command, { expiresIn });
 }
 

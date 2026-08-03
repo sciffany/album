@@ -17,9 +17,24 @@ const MEDIA_EXT = new Set([
   "avi",
 ]);
 
+export function baseNameFromKey(key: string): string {
+  return key.split("/").pop() ?? key;
+}
+
+export function extFromKey(key: string): string {
+  const base = baseNameFromKey(key);
+  const i = base.lastIndexOf(".");
+  if (i <= 0 || i === base.length - 1) return "";
+  return base.slice(i + 1).toLowerCase();
+}
+
+/** Dotfiles and folder markers are not browsable library entries. */
+export function isBrowsableObjectKey(key: string): boolean {
+  if (!key || key.endsWith("/")) return false;
+  return !baseNameFromKey(key).startsWith(".");
+}
+
 export function isMediaKey(key: string): boolean {
-  const base = key.split("/").pop() ?? key;
-  if (base.startsWith(".")) return false;
-  const ext = base.split(".").pop()?.toLowerCase() ?? "";
-  return MEDIA_EXT.has(ext);
+  if (!isBrowsableObjectKey(key)) return false;
+  return MEDIA_EXT.has(extFromKey(key));
 }
