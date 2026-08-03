@@ -17,6 +17,7 @@ import {
   softDeleteMediaObject,
   type UploadPresignRequest,
 } from "@/lib/media-ops";
+import { extractDatetimeTaken } from "@/lib/datetime-taken";
 import { prisma } from "@/lib/prisma";
 import { getBucket, objectExists, presignPutObject } from "@/lib/s3";
 import { assertValidKey, baseName, normalizeFolderPath } from "@/lib/storage-keys";
@@ -392,17 +393,28 @@ export async function completeUploadsAction(items: CompleteUploadItem[]) {
     for (const item of items) {
       const key = assertValidKey(item.key);
       const folderId = await ensureFolderPath(item.folderPath || "");
+
+      // Best-effort: missing EXIF must not fail the upload.
+      let datetimeTaken: Date | null = null;
+      try {
+        datetimeTaken = await extractDatetimeTaken(key);
+      } catch {
+        datetimeTaken = null;
+      }
+
       await prisma.media.upsert({
         where: { s3Key: key },
         create: {
           s3Key: key,
           name: item.name,
           folderId,
+          datetimeTaken,
         },
         update: {
           name: item.name,
           folderId,
           deletedAt: null,
+          ...(datetimeTaken ? { datetimeTaken } : {}),
         },
       });
     }

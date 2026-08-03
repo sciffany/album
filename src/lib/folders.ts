@@ -107,9 +107,9 @@ export async function listFolderContents(path: string): Promise<{
   }));
 
   media.sort((a, b) => {
-    const at = a.datetimeTaken?.getTime() ?? 0;
-    const bt = b.datetimeTaken?.getTime() ?? 0;
-    if (at !== bt) return bt - at;
+    const at = a.datetimeTaken?.getTime() ?? Number.POSITIVE_INFINITY;
+    const bt = b.datetimeTaken?.getTime() ?? Number.POSITIVE_INFINITY;
+    if (at !== bt) return at - bt;
     return a.name.localeCompare(b.name);
   });
 

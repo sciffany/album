@@ -14,26 +14,11 @@
 import "dotenv/config";
 
 import { Prisma, PrismaClient } from "@prisma/client";
-import exifr from "exifr";
-import { getObjectBytes } from "../src/lib/s3";
+import {
+  extractDatetimeTaken,
+  isSupportedDatetimeMedia,
+} from "../src/lib/datetime-taken";
 
-const IMAGE_EXT = new Set([
-  "jpg",
-  "jpeg",
-  "png",
-  "webp",
-  "heic",
-  "heif",
-  "tif",
-  "tiff",
-]);
-
-const VIDEO_EXT = new Set(["mp4", "mov", "m4v"]);
-
-/** Bytes to fetch for stills — EXIF APP1 is almost always near the start. */
-const IMAGE_RANGE_BYTES = 512 * 1024;
-/** Videos need a larger head for the moov/meta atoms. */
-const VIDEO_RANGE_BYTES = 2 * 1024 * 1024;
 /** Rows per bulk UPDATE. Keep modest so progress logs show up often. */
 const UPDATE_BATCH = 100;
 
@@ -86,69 +71,6 @@ Options:
   }
 
   return args;
-}
-
-function extOf(key: string): string {
-  const base = key.split("/").pop() ?? key;
-  return base.split(".").pop()?.toLowerCase() ?? "";
-}
-
-function isSupportedMedia(key: string): boolean {
-  const base = key.split("/").pop() ?? key;
-  if (base.startsWith(".")) return false;
-  const ext = extOf(key);
-  return IMAGE_EXT.has(ext) || VIDEO_EXT.has(ext);
-}
-
-function isVideo(key: string): boolean {
-  return VIDEO_EXT.has(extOf(key));
-}
-
-function asDate(value: unknown): Date | null {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
-  if (typeof value === "string" || typeof value === "number") {
-    const d = new Date(value);
-    if (!Number.isNaN(d.getTime())) return d;
-  }
-  return null;
-}
-
-async function extractDatetimeTaken(key: string): Promise<Date | null> {
-  const byteLength = isVideo(key) ? VIDEO_RANGE_BYTES : IMAGE_RANGE_BYTES;
-  const buf = await getObjectBytes(key, { byteLength });
-
-  const tags = await exifr.parse(buf, {
-    pick: [
-      "DateTimeOriginal",
-      "CreateDate",
-      "MediaCreateDate",
-      "TrackCreateDate",
-      "ModifyDate",
-    ],
-    // Still EXIF + HEIC/AVIF + QuickTime/MP4.
-    tiff: true,
-    xmp: false,
-    icc: false,
-    iptc: false,
-    jfif: false,
-    ihdr: false,
-    translateKeys: true,
-    translateValues: true,
-    reviveValues: true,
-    sanitize: true,
-    mergeOutput: true,
-  });
-
-  if (!tags || typeof tags !== "object") return null;
-
-  const record = tags as Record<string, unknown>;
-  return (
-    asDate(record.DateTimeOriginal) ??
-    asDate(record.CreateDate) ??
-    asDate(record.MediaCreateDate) ??
-    asDate(record.TrackCreateDate) ??
-    asDate(record.ModifyDate)
-  );
 }
 
 async function mapPool<T, R>(
@@ -228,7 +150,11 @@ async function main() {
       ...(args.limit != null ? { take: args.limit } : {}),
     });
 
-    const todo = rows.filter((row) => isSupportedMedia(row.name) || isSupportedMedia(row.s3Key));
+    const todo = rows.filter(
+      (row) =>
+        isSupportedDatetimeMedia(row.name) ||
+        isSupportedDatetimeMedia(row.s3Key),
+    );
     console.log(`Found ${todo.length} media row(s) to consider`);
 
     let skippedNoExif = 0;
