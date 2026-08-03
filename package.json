@@ -13,7 +13,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "sync:datetime": "tsx scripts/sync-datetime-taken.ts",
-    "backfill:folders": "tsx scripts/backfill-folders.ts"
+    "backfill:folders": "tsx scripts/backfill-folders.ts",
+    "backfill:other-files": "tsx scripts/backfill-other-files.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.3",
