@@ -2,6 +2,9 @@
  * Read capture time from EXIF / QuickTime metadata for DB media rows,
  * and upsert `media.datetime_taken` in Neon.
  *
+ * Safe with DB-owned folders: only writes `datetime_taken`. Never touches
+ * folder rows, `folder_id`, `name`, or `s3_key`.
+ *
  * Usage:
  *   npx tsx scripts/sync-datetime-taken.ts
  *   npx tsx scripts/sync-datetime-taken.ts --prefix=Family/2024
@@ -10,7 +13,7 @@
  */
 import "dotenv/config";
 
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import exifr from "exifr";
 import { getObjectBytes } from "../src/lib/s3";
 
@@ -31,6 +34,8 @@ const VIDEO_EXT = new Set(["mp4", "mov", "m4v"]);
 const IMAGE_RANGE_BYTES = 512 * 1024;
 /** Videos need a larger head for the moov/meta atoms. */
 const VIDEO_RANGE_BYTES = 2 * 1024 * 1024;
+/** Rows per bulk UPDATE. Keep modest so progress logs show up often. */
+const UPDATE_BATCH = 100;
 
 type Args = {
   prefix: string;
@@ -167,6 +172,25 @@ async function mapPool<T, R>(
   return results;
 }
 
+/** One-statement bulk update — avoids Neon hanging on huge Prisma $transaction lists. */
+async function bulkUpdateDatetimeTaken(
+  prisma: PrismaClient,
+  rows: { id: string; datetimeTaken: Date }[],
+): Promise<void> {
+  if (rows.length === 0) return;
+
+  const values = Prisma.join(
+    rows.map((row) => Prisma.sql`(${row.id}, ${row.datetimeTaken})`),
+  );
+
+  await prisma.$executeRaw`
+    UPDATE "media" AS m
+    SET "datetime_taken" = v.datetime_taken::timestamptz
+    FROM (VALUES ${values}) AS v(id, datetime_taken)
+    WHERE m."id" = v.id
+  `;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const prisma = new PrismaClient();
@@ -207,9 +231,43 @@ async function main() {
     const todo = rows.filter((row) => isSupportedMedia(row.name) || isSupportedMedia(row.s3Key));
     console.log(`Found ${todo.length} media row(s) to consider`);
 
-    let updated = 0;
     let skippedNoExif = 0;
     let errors = 0;
+    let updated = 0;
+    let batchNum = 0;
+    const pending: { id: string; datetimeTaken: Date }[] = [];
+
+    // Serialize flushes; EXIF workers only enqueue — they do not await DB writes.
+    let flushChain: Promise<void> = Promise.resolve();
+
+    const enqueueFlush = (force = false) => {
+      flushChain = flushChain
+        .then(async () => {
+          while (
+            pending.length >= UPDATE_BATCH ||
+            (force && pending.length > 0)
+          ) {
+            const batch = pending.splice(0, UPDATE_BATCH);
+            batchNum += 1;
+            console.log(
+              `  update-media  batch ${batchNum} writing ${batch.length}…` +
+                (args.dryRun ? " (dry-run)" : ""),
+            );
+            if (!args.dryRun) {
+              await bulkUpdateDatetimeTaken(prisma, batch);
+            }
+            updated += batch.length;
+            console.log(
+              `  update-media  batch ${batchNum} done (+${batch.length}, total ${updated})`,
+            );
+          }
+        })
+        .catch((err) => {
+          errors += 1;
+          const message = err instanceof Error ? err.message : String(err);
+          console.error(`  error    bulk-update: ${message}`);
+        });
+    };
 
     await mapPool(todo, args.concurrency, async (row) => {
       const key = row.s3Key;
@@ -220,25 +278,20 @@ async function main() {
           console.log(`  no-exif  ${key}`);
           return;
         }
-
-        if (args.dryRun) {
-          updated += 1;
-          console.log(`  dry-run  ${key} → ${datetimeTaken.toISOString()}`);
-          return;
+        pending.push({ id: row.id, datetimeTaken });
+        console.log(`  parsed   ${key} → ${datetimeTaken.toISOString()}`);
+        if (pending.length >= UPDATE_BATCH) {
+          enqueueFlush();
         }
-
-        await prisma.media.update({
-          where: { id: row.id },
-          data: { datetimeTaken },
-        });
-        updated += 1;
-        console.log(`  updated  ${key} → ${datetimeTaken.toISOString()}`);
       } catch (err) {
         errors += 1;
         const message = err instanceof Error ? err.message : String(err);
         console.error(`  error    ${key}: ${message}`);
       }
     });
+
+    enqueueFlush(true);
+    await flushChain;
 
     console.log(
       `\nDone. updated=${updated} no-exif=${skippedNoExif} errors=${errors}`,

@@ -1,0 +1,101 @@
+# Weekly Neon Postgres backup → S3 (kept for 30 days).
+#
+# Required secrets:
+#   DIRECT_URL              Neon direct (non-pooled) connection string
+#   AWS_ACCESS_KEY_ID
+#   AWS_SECRET_ACCESS_KEY
+#   AWS_S3_BUCKET            e.g. my-album-backups
+#
+# Optional secrets:
+#   AWS_REGION              e.g. us-east-1 (defaults to us-east-1)
+#   AWS_S3_PREFIX            key prefix, e.g. neon/ (defaults to neon/)
+
+name: Weekly DB Backup
+
+on:
+  schedule:
+    # Sundays at 06:00 UTC
+    - cron: "0 6 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Install PostgreSQL 18 client
+        run: |
+          # Neon is on Postgres 18; ubuntu-latest ships an older pg_dump on PATH.
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-18
+          # Prefer the versioned binary — /usr/bin/pg_dump stays at the runner's older client.
+          echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
+          /usr/lib/postgresql/18/bin/pg_dump --version
+
+      - name: Dump database
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${DIRECT_URL:-}" ]; then
+            echo "::error::DIRECT_URL secret is not set"
+            exit 1
+          fi
+
+          TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+          DUMP_FILE="album-${TIMESTAMP}.dump"
+          {
+            echo "DUMP_FILE=${DUMP_FILE}"
+            echo "TIMESTAMP=${TIMESTAMP}"
+          } >> "$GITHUB_ENV"
+
+          # Custom format is compressed and restore-friendly (pg_restore).
+          # Use DIRECT_URL — Neon's pooled endpoint is not suitable for pg_dump.
+          pg_dump "$DIRECT_URL" \
+            --format=custom \
+            --no-owner \
+            --no-acl \
+            --verbose \
+            --file="$DUMP_FILE"
+
+          ls -lh "$DUMP_FILE"
+
+      - name: Upload to S3 and prune old backups
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+          AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+          AWS_S3_PREFIX: ${{ secrets.AWS_S3_PREFIX || 'neon/' }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${AWS_S3_BUCKET:-}" ] || [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+            echo "::error::AWS_S3_BUCKET, AWS_ACCESS_KEY_ID, and AWS_SECRET_ACCESS_KEY secrets are required"
+            exit 1
+          fi
+
+          KEY="${AWS_S3_PREFIX}${DUMP_FILE}"
+          aws s3 cp "$DUMP_FILE" "s3://${AWS_S3_BUCKET}/${KEY}" --only-show-errors
+          echo "Uploaded s3://${AWS_S3_BUCKET}/${KEY}"
+
+          # Delete dumps under the prefix older than 30 days.
+          CUTOFF="$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+          aws s3api list-objects-v2 \
+            --bucket "$AWS_S3_BUCKET" \
+            --prefix "$AWS_S3_PREFIX" \
+            --query "Contents[?LastModified<'${CUTOFF}'].Key" \
+            --output text \
+          | tr '\t' '\n' \
+          | while read -r old_key; do
+              [ -z "$old_key" ] || [ "$old_key" = "None" ] && continue
+              echo "Deleting s3://${AWS_S3_BUCKET}/${old_key}"
+              aws s3 rm "s3://${AWS_S3_BUCKET}/${old_key}" --only-show-errors
+            done
