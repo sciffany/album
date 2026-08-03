@@ -16,6 +16,16 @@ const body = Source_Sans_3({
 export const metadata: Metadata = {
   title: "Album",
   description: "Personal photo tagging library",
+  robots: {
+    index: false,
+    follow: false,
+    nocache: true,
+    googleBot: {
+      index: false,
+      follow: false,
+      noimageindex: true,
+    },
+  },
 };
 
 export default function RootLayout({
