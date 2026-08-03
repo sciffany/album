@@ -1,11 +1,11 @@
 /**
  * Sync the library from S3 into Postgres:
- * 1. Create Media rows for every media object missing from the DB
- *    (the media table is often incomplete — S3 is the source of truth for blobs)
- * 2. Create Folder rows for every path segment
- * 3. Set media.folder_id + unique display name per folder
+ * 1. Create Media rows for every media object missing from the DB (batched)
+ * 2. Create Folder rows for every path segment (batched per depth)
+ * 3. Set media.folder_id + unique display name per folder (batched)
  *
- * Idempotent. Does not touch EXIF / datetime_taken.
+ * Idempotent: existing s3_key rows are never re-inserted.
+ * Does not touch EXIF / datetime_taken.
  *
  * Usage:
  *   npx tsx scripts/backfill-folders.ts
@@ -24,6 +24,11 @@ import {
   parentFolder,
   TRASH_ROOT,
 } from "../src/lib/storage-keys";
+
+const MEDIA_CREATE_BATCH = 500;
+const FOLDER_CREATE_BATCH = 500;
+const MEDIA_UPDATE_BATCH = 500;
+const TRASH_MARK_BATCH = 500;
 
 function newId(): string {
   return `c${crypto.randomUUID().replace(/-/g, "")}`;
@@ -77,12 +82,28 @@ function isLibraryMediaKey(key: string): boolean {
   return isMediaKey(key);
 }
 
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    out.push(items.slice(i, i + size));
+  }
+  return out;
+}
+
+type MediaRow = {
+  id: string;
+  s3Key: string;
+  name: string;
+  folderId: string | null;
+  deletedAt: Date | null;
+};
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const prisma = new PrismaClient();
 
   console.log(
-    `backfill-folders | ${args.dryRun ? "dry-run" : "write"}`,
+    `backfill-folders | ${args.dryRun ? "dry-run" : "write"} | batch=${MEDIA_CREATE_BATCH}`,
   );
 
   try {
@@ -90,7 +111,7 @@ async function main() {
     const objects = await listAllObjects("", { includeMarkers: true });
     console.log(`Found ${objects.length} S3 object(s) (incl. markers)`);
 
-    const existingByKey = new Map(
+    const existingByKey = new Map<string, MediaRow>(
       (
         await prisma.media.findMany({
           select: {
@@ -106,11 +127,17 @@ async function main() {
     console.log(`Existing media rows: ${existingByKey.size}`);
 
     const pathSet = new Set<string>();
-    let mediaCreated = 0;
-    let trashMarked = 0;
+    const toCreate: {
+      id: string;
+      s3Key: string;
+      name: string;
+      deletedAt: Date | null;
+    }[] = [];
+    const toMarkTrashIds: string[] = [];
+    let alreadyPresent = 0;
     let mediaSkippedNonMedia = 0;
 
-    // Pass 1: ensure a Media row for every media blob; collect folder paths.
+    // Pass 1a: classify S3 objects — skip existing s3_key, queue missing creates.
     for (const obj of objects) {
       if (obj.key === TRASH_ROOT) continue;
 
@@ -125,7 +152,6 @@ async function main() {
 
       if (!isLibraryMediaKey(obj.key)) {
         mediaSkippedNonMedia += 1;
-        // Still collect parent folders so empty-ish trees from non-media stay.
         if (!isTrashKey(obj.key)) {
           for (const p of collectAncestorPaths(parentFolder(obj.key))) {
             pathSet.add(p);
@@ -144,64 +170,83 @@ async function main() {
       const inTrash = isTrashKey(obj.key);
       const existing = existingByKey.get(obj.key);
 
-      if (!existing) {
-        if (args.dryRun) {
-          mediaCreated += 1;
-          console.log(
-            `  create-media   ${obj.key}${inTrash ? " (trash)" : ""}`,
-          );
-          // Placeholder so later passes can reason about the key.
-          existingByKey.set(obj.key, {
-            id: `dry_${obj.key}`,
-            s3Key: obj.key,
-            name: desiredName,
-            folderId: null,
-            deletedAt: inTrash ? (obj.lastModified ?? new Date()) : null,
-          });
-          continue;
+      if (existing) {
+        alreadyPresent += 1;
+        if (inTrash && !existing.deletedAt) {
+          toMarkTrashIds.push(existing.id);
+          existing.deletedAt = obj.lastModified ?? new Date();
         }
-
-        const created = await prisma.media.create({
-          data: {
-            s3Key: obj.key,
-            name: desiredName,
-            deletedAt: inTrash ? (obj.lastModified ?? new Date()) : null,
-          },
-        });
-        existingByKey.set(obj.key, {
-          id: created.id,
-          s3Key: created.s3Key,
-          name: created.name,
-          folderId: created.folderId,
-          deletedAt: created.deletedAt,
-        });
-        mediaCreated += 1;
-        console.log(`  create-media   ${obj.key}${inTrash ? " (trash)" : ""}`);
         continue;
       }
 
-      if (inTrash && !existing.deletedAt) {
-        if (args.dryRun) {
-          trashMarked += 1;
-          console.log(`  mark-trash     ${obj.key}`);
-          existing.deletedAt = obj.lastModified ?? new Date();
-          continue;
-        }
-        await prisma.media.update({
-          where: { id: existing.id },
-          data: { deletedAt: obj.lastModified ?? new Date() },
-        });
-        existing.deletedAt = obj.lastModified ?? new Date();
-        trashMarked += 1;
-        console.log(`  mark-trash     ${obj.key}`);
-      }
+      const id = newId();
+      const deletedAt = inTrash ? (obj.lastModified ?? new Date()) : null;
+      toCreate.push({
+        id,
+        s3Key: obj.key,
+        name: desiredName,
+        deletedAt,
+      });
+      // Track locally so later passes see new rows without re-query mid-loop.
+      existingByKey.set(obj.key, {
+        id,
+        s3Key: obj.key,
+        name: desiredName,
+        folderId: null,
+        deletedAt,
+      });
     }
 
     console.log(
-      `Media created=${mediaCreated} trashMarked=${trashMarked} nonMediaSkipped=${mediaSkippedNonMedia}`,
+      `Plan: create=${toCreate.length} alreadyPresent=${alreadyPresent} markTrash=${toMarkTrashIds.length} nonMedia=${mediaSkippedNonMedia}`,
     );
 
-    // Pass 2: ensure Folder rows (shallow → deep).
+    // Pass 1b: batch-create missing media (skipDuplicates on unique s3_key).
+    let mediaCreated = 0;
+    if (toCreate.length > 0) {
+      const batches = chunk(toCreate, MEDIA_CREATE_BATCH);
+      for (let i = 0; i < batches.length; i += 1) {
+        const batch = batches[i]!;
+        if (!args.dryRun) {
+          const result = await prisma.media.createMany({
+            data: batch,
+            skipDuplicates: true,
+          });
+          mediaCreated += result.count;
+        } else {
+          mediaCreated += batch.length;
+        }
+        console.log(
+          `  create-media  batch ${i + 1}/${batches.length} (+${batch.length}, total ${mediaCreated}/${toCreate.length})`,
+        );
+      }
+    } else {
+      console.log("  create-media  nothing to insert");
+    }
+
+    // Pass 1c: batch-mark legacy trash keys as soft-deleted.
+    let trashMarked = 0;
+    if (toMarkTrashIds.length > 0) {
+      const batches = chunk(toMarkTrashIds, TRASH_MARK_BATCH);
+      const now = new Date();
+      for (let i = 0; i < batches.length; i += 1) {
+        const batch = batches[i]!;
+        if (!args.dryRun) {
+          const result = await prisma.media.updateMany({
+            where: { id: { in: batch }, deletedAt: null },
+            data: { deletedAt: now },
+          });
+          trashMarked += result.count;
+        } else {
+          trashMarked += batch.length;
+        }
+        console.log(
+          `  mark-trash    batch ${i + 1}/${batches.length} (+${batch.length}, total ${trashMarked}/${toMarkTrashIds.length})`,
+        );
+      }
+    }
+
+    // Pass 2: ensure Folder rows (shallow → deep), batched per depth.
     const sortedPaths = [...pathSet].sort(
       (a, b) => a.split("/").length - b.split("/").length || a.localeCompare(b),
     );
@@ -212,36 +257,68 @@ async function main() {
     });
     for (const f of existingFolders) pathToId.set(f.path, f.id);
 
-    console.log(`Folders to ensure: ${sortedPaths.length}`);
+    const missingPaths = sortedPaths.filter((p) => !pathToId.has(p));
+    console.log(
+      `Folders: existing=${pathToId.size} toCreate=${missingPaths.length}`,
+    );
 
     let foldersCreated = 0;
-    for (const path of sortedPaths) {
-      if (pathToId.has(path)) continue;
-      const name = baseName(path);
-      const parentPath = parentFolder(path);
-      const parentId = parentPath ? pathToId.get(parentPath) ?? null : null;
-      if (parentPath && !parentId) {
-        throw new Error(`Missing parent folder for ${path}`);
-      }
+    // Group by depth so parents exist before children.
+    const byDepth = new Map<number, string[]>();
+    for (const path of missingPaths) {
+      const depth = path.split("/").length;
+      const list = byDepth.get(depth) ?? [];
+      list.push(path);
+      byDepth.set(depth, list);
+    }
+    const depths = [...byDepth.keys()].sort((a, b) => a - b);
 
-      if (args.dryRun) {
-        pathToId.set(path, `dry_${path}`);
-        foldersCreated += 1;
-        console.log(`  create-folder  ${path}`);
-        continue;
-      }
-
-      const id = newId();
-      await prisma.folder.create({
-        data: { id, name, parentId, path },
+    for (const depth of depths) {
+      const pathsAtDepth = byDepth.get(depth) ?? [];
+      const rows = pathsAtDepth.map((path) => {
+        const id = newId();
+        pathToId.set(path, id);
+        const parentPath = parentFolder(path);
+        const parentId = parentPath ? pathToId.get(parentPath) ?? null : null;
+        if (parentPath && !parentId) {
+          throw new Error(`Missing parent folder for ${path}`);
+        }
+        return {
+          id,
+          name: baseName(path),
+          parentId,
+          path,
+        };
       });
-      pathToId.set(path, id);
-      foldersCreated += 1;
-      console.log(`  create-folder  ${path}`);
+
+      const batches = chunk(rows, FOLDER_CREATE_BATCH);
+      for (let i = 0; i < batches.length; i += 1) {
+        const batch = batches[i]!;
+        if (!args.dryRun) {
+          const result = await prisma.folder.createMany({
+            data: batch,
+            skipDuplicates: true,
+          });
+          foldersCreated += result.count;
+        } else {
+          foldersCreated += batch.length;
+        }
+        console.log(
+          `  create-folder depth=${depth} batch ${i + 1}/${batches.length} (+${batch.length}, total ${foldersCreated})`,
+        );
+      }
     }
 
-    // Pass 3: assign folder_id + unique display names.
-    // Re-read so we include rows created above (and any that existed before).
+    // If createMany skipped duplicates, refresh path→id from DB.
+    if (!args.dryRun && missingPaths.length > 0) {
+      const refreshed = await prisma.folder.findMany({
+        where: { path: { in: missingPaths } },
+        select: { id: true, path: true },
+      });
+      for (const f of refreshed) pathToId.set(f.path, f.id);
+    }
+
+    // Pass 3: assign folder_id + unique display names (batched updates).
     const mediaRows = args.dryRun
       ? [...existingByKey.values()]
       : await prisma.media.findMany({
@@ -254,8 +331,6 @@ async function main() {
           },
         });
 
-    let mediaUpdated = 0;
-    let mediaSkipped = 0;
     const usedNames = new Map<string, Set<string>>();
 
     function getNameSet(folderId: string | null): Set<string> {
@@ -284,6 +359,10 @@ async function main() {
       return name;
     }
 
+    const toUpdate: { id: string; folderId: string | null; name: string }[] =
+      [];
+    let mediaSkipped = 0;
+
     for (const row of mediaRows) {
       const libraryKey = libraryPathForMedia(row.s3Key);
       const folderPath = folderPathFromLibraryKey(libraryKey);
@@ -298,27 +377,34 @@ async function main() {
         mediaSkipped += 1;
         continue;
       }
+      toUpdate.push({ id: row.id, folderId, name });
+    }
 
-      if (args.dryRun) {
-        mediaUpdated += 1;
-        console.log(
-          `  update-media   ${row.s3Key} → folder=${folderPath || "(root)"} name=${name}`,
+    console.log(
+      `Media updates: toUpdate=${toUpdate.length} alreadyOk=${mediaSkipped}`,
+    );
+
+    let mediaUpdated = 0;
+    const updateBatches = chunk(toUpdate, MEDIA_UPDATE_BATCH);
+    for (let i = 0; i < updateBatches.length; i += 1) {
+      const batch = updateBatches[i]!;
+      if (!args.dryRun) {
+        await prisma.$transaction(
+          batch.map((row) =>
+            prisma.media.update({
+              where: { id: row.id },
+              data: { folderId: row.folderId, name: row.name },
+            }),
+          ),
         );
-        continue;
       }
-
-      await prisma.media.update({
-        where: { id: row.id },
-        data: { folderId, name },
-      });
-      mediaUpdated += 1;
+      mediaUpdated += batch.length;
       console.log(
-        `  update-media   ${row.s3Key} → folder=${folderPath || "(root)"} name=${name}`,
+        `  update-media  batch ${i + 1}/${updateBatches.length} (+${batch.length}, total ${mediaUpdated}/${toUpdate.length})`,
       );
     }
 
     if (!args.dryRun) {
-      // Safe now that active rows have folder_id + per-folder unique names.
       await prisma.$executeRawUnsafe(`
         CREATE UNIQUE INDEX IF NOT EXISTS "media_root_name_active_key"
           ON "media"("name")
@@ -328,7 +414,7 @@ async function main() {
     }
 
     console.log(
-      `\nDone. mediaCreated=${mediaCreated} foldersCreated=${foldersCreated} mediaUpdated=${mediaUpdated} mediaSkipped=${mediaSkipped} trashMarked=${trashMarked}`,
+      `\nDone. mediaCreated=${mediaCreated} alreadyPresent=${alreadyPresent} foldersCreated=${foldersCreated} mediaUpdated=${mediaUpdated} mediaSkipped=${mediaSkipped} trashMarked=${trashMarked}`,
     );
   } finally {
     await prisma.$disconnect();

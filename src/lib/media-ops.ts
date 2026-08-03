@@ -247,6 +247,49 @@ export async function renameMedia(
   return { fromKey: from, toKey: from };
 }
 
+/**
+ * Rewrite materialized `path` for a folder and its descendants.
+ * Uses a batch `$transaction([...])` (not interactive) so it works with
+ * Neon's pooled DATABASE_URL / PgBouncer transaction mode.
+ */
+async function rewriteFolderSubtreePaths(
+  from: string,
+  to: string,
+  rootUpdate: { id: string; name: string; parentId?: string | null },
+): Promise<number> {
+  const descendants = await prisma.folder.findMany({
+    where: {
+      OR: [{ path: from }, { path: { startsWith: `${from}/` } }],
+    },
+    select: { id: true, path: true },
+  });
+
+  await prisma.$transaction(
+    descendants.map((row) => {
+      const next =
+        row.path === from ? to : `${to}${row.path.slice(from.length)}`;
+      if (row.id === rootUpdate.id) {
+        return prisma.folder.update({
+          where: { id: row.id },
+          data: {
+            path: next,
+            name: rootUpdate.name,
+            ...(rootUpdate.parentId !== undefined
+              ? { parentId: rootUpdate.parentId }
+              : {}),
+          },
+        });
+      }
+      return prisma.folder.update({
+        where: { id: row.id },
+        data: { path: next },
+      });
+    }),
+  );
+
+  return descendants.length;
+}
+
 /** Rename a folder in place (same parent path). */
 export async function renameFolder(
   fromPath: string,
@@ -270,26 +313,9 @@ export async function renameFolder(
   });
   if (clash) throw new Error("A folder with that name already exists");
 
-  const moved = await prisma.$transaction(async (tx) => {
-    await tx.folder.update({
-      where: { id: folder.id },
-      data: { name },
-    });
-    const descendants = await tx.folder.findMany({
-      where: {
-        OR: [{ path: from }, { path: { startsWith: `${from}/` } }],
-      },
-      select: { id: true, path: true },
-    });
-    for (const row of descendants) {
-      const next =
-        row.path === from ? to : `${to}${row.path.slice(from.length)}`;
-      await tx.folder.update({
-        where: { id: row.id },
-        data: { path: next },
-      });
-    }
-    return descendants.length;
+  const moved = await rewriteFolderSubtreePaths(from, to, {
+    id: folder.id,
+    name,
   });
 
   return { fromPath: from, toPath: to, moved };
@@ -322,26 +348,10 @@ export async function moveFolderPrefix(
   assertValidFolderName(newName);
   const parentId = await ensureFolderPath(newParentPath);
 
-  const moved = await prisma.$transaction(async (tx) => {
-    await tx.folder.update({
-      where: { id: folder.id },
-      data: { parentId, name: newName },
-    });
-    const descendants = await tx.folder.findMany({
-      where: {
-        OR: [{ path: from }, { path: { startsWith: `${from}/` } }],
-      },
-      select: { id: true, path: true },
-    });
-    for (const row of descendants) {
-      const next =
-        row.path === from ? to : `${to}${row.path.slice(from.length)}`;
-      await tx.folder.update({
-        where: { id: row.id },
-        data: { path: next },
-      });
-    }
-    return descendants.length;
+  const moved = await rewriteFolderSubtreePaths(from, to, {
+    id: folder.id,
+    name: newName,
+    parentId,
   });
 
   return { moved };
