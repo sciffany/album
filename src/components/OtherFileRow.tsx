@@ -4,6 +4,7 @@ import type { MouseEvent } from "react";
 import { MediaActions } from "@/components/MediaActions";
 import { SelectionCheckbox } from "@/components/SelectionCheckbox";
 import { baseNameFromKey, extFromKey } from "@/lib/media-types";
+import { parentFolder } from "@/lib/storage-keys";
 
 export type OtherFileItem = {
   s3Key: string;
@@ -96,7 +97,11 @@ export function OtherFileRow({
           >
             Download
           </a>
-          <MediaActions s3Key={file.s3Key} />
+          <MediaActions
+            s3Key={file.s3Key}
+            name={name}
+            folderPath={parentFolder(file.s3Key)}
+          />
         </div>
       </div>
     </article>

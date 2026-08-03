@@ -8,18 +8,21 @@ import {
 import { useRouter } from "next/navigation";
 import { moveMediaAction } from "@/lib/actions";
 import { DestinationFolderPicker } from "@/components/DestinationFolderPicker";
-import { parentFolder, baseName } from "@/lib/storage-keys";
 
 function MoveMediaForm({
   s3Key,
+  name: initialName,
+  folderPath,
   onClose,
 }: {
   s3Key: string;
+  name: string;
+  folderPath: string;
   onClose: () => void;
 }) {
   const router = useRouter();
-  const [folder, setFolder] = useState(() => parentFolder(s3Key));
-  const [name, setName] = useState(() => baseName(s3Key));
+  const [folder, setFolder] = useState(folderPath);
+  const [name, setName] = useState(initialName);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -57,7 +60,7 @@ function MoveMediaForm({
         >
           Move file
         </h2>
-        <p className="mt-1 truncate text-xs text-[var(--muted)]">{s3Key}</p>
+        <p className="mt-1 truncate text-xs text-[var(--muted)]">{initialName}</p>
 
         <div className="mt-4">
           <DestinationFolderPicker folder={folder} onFolderChange={setFolder} />
@@ -99,13 +102,25 @@ function MoveMediaForm({
 
 export function MoveMediaDialog({
   s3Key,
+  name,
+  folderPath,
   open,
   onClose,
 }: {
   s3Key: string;
+  name: string;
+  folderPath: string;
   open: boolean;
   onClose: () => void;
 }) {
   if (!open) return null;
-  return <MoveMediaForm key={s3Key} s3Key={s3Key} onClose={onClose} />;
+  return (
+    <MoveMediaForm
+      key={s3Key}
+      s3Key={s3Key}
+      name={name}
+      folderPath={folderPath}
+      onClose={onClose}
+    />
+  );
 }

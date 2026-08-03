@@ -8,13 +8,20 @@ import {
 import { useRouter } from "next/navigation";
 import { renameMediaAction, softDeleteMediaAction } from "@/lib/actions";
 import { MoveMediaDialog } from "@/components/MoveMediaDialog";
-import { baseName, parentFolder } from "@/lib/storage-keys";
 
-export function MediaActions({ s3Key }: { s3Key: string }) {
+export function MediaActions({
+  s3Key,
+  name,
+  folderPath,
+}: {
+  s3Key: string;
+  name: string;
+  folderPath: string;
+}) {
   const router = useRouter();
   const [moveOpen, setMoveOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
-  const [newName, setNewName] = useState(() => baseName(s3Key));
+  const [newName, setNewName] = useState(name);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -42,7 +49,7 @@ export function MediaActions({ s3Key }: { s3Key: string }) {
   }
 
   function onRenameOpen() {
-    setNewName(baseName(s3Key));
+    setNewName(name);
     setError(null);
     setRenameOpen(true);
   }
@@ -51,7 +58,7 @@ export function MediaActions({ s3Key }: { s3Key: string }) {
     e.preventDefault();
     setError(null);
     const trimmed = newName.trim();
-    if (!trimmed || trimmed === baseName(s3Key)) {
+    if (!trimmed || trimmed === name) {
       setRenameOpen(false);
       return;
     }
@@ -70,12 +77,9 @@ export function MediaActions({ s3Key }: { s3Key: string }) {
     });
   }
 
-  const parent = parentFolder(s3Key);
-  const previewKey = newName.trim()
-    ? parent
-      ? `${parent}/${newName.trim()}`
-      : newName.trim()
-    : s3Key;
+  const previewPath = folderPath
+    ? `${folderPath}/${newName.trim() || name}`
+    : newName.trim() || name;
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -106,6 +110,8 @@ export function MediaActions({ s3Key }: { s3Key: string }) {
       {error && <p className="w-full text-xs text-red-700">{error}</p>}
       <MoveMediaDialog
         s3Key={s3Key}
+        name={name}
+        folderPath={folderPath}
         open={moveOpen}
         onClose={() => setMoveOpen(false)}
       />
@@ -130,7 +136,7 @@ export function MediaActions({ s3Key }: { s3Key: string }) {
             >
               Rename file
             </h2>
-            <p className="mt-1 truncate text-xs text-[var(--muted)]">{s3Key}</p>
+            <p className="mt-1 truncate text-xs text-[var(--muted)]">{name}</p>
             <label className="mt-4 block text-xs font-medium text-[var(--muted)]">
               File name
               <input
@@ -142,7 +148,7 @@ export function MediaActions({ s3Key }: { s3Key: string }) {
               />
             </label>
             <p className="mt-2 truncate text-xs text-[var(--muted)]">
-              New key: <span className="text-[var(--ink)]">{previewKey}</span>
+              Path: <span className="text-[var(--ink)]">{previewPath}</span>
             </p>
             {error && <p className="mt-2 text-xs text-red-700">{error}</p>}
             <div className="mt-4 flex justify-end gap-2">

@@ -3,7 +3,7 @@ import { BrowseToolbar } from "@/components/BrowseToolbar";
 import { FolderBreadcrumb } from "@/components/FolderBreadcrumb";
 import { FolderGrid } from "@/components/FolderGrid";
 import {
-  assertPrefixExists,
+  assertFolderExists,
   breadcrumbFromPath,
   listFolderContents,
   pathFromSegments,
@@ -22,18 +22,11 @@ export default async function BrowsePage({
     redirect("/trash");
   }
 
-  // List once — existence check only when empty (avoids a second full S3 list).
-  const { folders, media, otherFiles } = await listFolderContents(path);
-  if (
-    path &&
-    folders.length === 0 &&
-    media.length === 0 &&
-    otherFiles.length === 0 &&
-    !(await assertPrefixExists(path))
-  ) {
+  if (path && !(await assertFolderExists(path))) {
     notFound();
   }
 
+  const { folders, media } = await listFolderContents(path);
   const crumbs = breadcrumbFromPath(path);
 
   return (
@@ -47,7 +40,7 @@ export default async function BrowsePage({
           <BrowseToolbar path={path} />
         </div>
       </div>
-      <FolderGrid folders={folders} media={media} otherFiles={otherFiles} />
+      <FolderGrid folders={folders} media={media} />
     </div>
   );
 }

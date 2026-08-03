@@ -6,13 +6,13 @@ import { purgeMediaAction, restoreMediaAction } from "@/lib/actions";
 
 export function TrashItemRow({
   s3Key,
-  originalS3Key,
+  displayPath,
   deletedAt,
   caption,
   mediaType,
 }: {
   s3Key: string;
-  originalS3Key: string | null;
+  displayPath: string;
   deletedAt: Date | string | null;
   caption: string | null;
   mediaType: string;
@@ -22,7 +22,6 @@ export function TrashItemRow({
   const [error, setError] = useState<string | null>(null);
   const [thumbFailed, setThumbFailed] = useState(false);
   const objectHref = `/api/s3/object?key=${encodeURIComponent(s3Key)}`;
-  const restoreLabel = originalS3Key ?? "original location";
   const deletedLabel = deletedAt
     ? new Date(deletedAt).toLocaleString(undefined, {
         dateStyle: "medium",
@@ -76,7 +75,7 @@ export function TrashItemRow({
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={objectHref}
-            alt={caption || restoreLabel}
+            alt={caption || displayPath}
             className="h-full w-full object-cover"
             loading="lazy"
             decoding="async"
@@ -96,9 +95,7 @@ export function TrashItemRow({
 
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         <div>
-          <p className="truncate text-sm text-[var(--ink)]">
-            {originalS3Key ?? s3Key}
-          </p>
+          <p className="truncate text-sm text-[var(--ink)]">{displayPath}</p>
           {deletedLabel && (
             <p className="mt-0.5 text-xs text-[var(--muted)]">
               Deleted {deletedLabel}
@@ -114,7 +111,7 @@ export function TrashItemRow({
           <button
             type="button"
             onClick={restore}
-            disabled={pending || !originalS3Key}
+            disabled={pending}
             className="rounded-md bg-[var(--accent)] px-2 py-1 text-xs text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
           >
             {pending ? "Working…" : "Restore"}

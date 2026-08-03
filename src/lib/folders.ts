@@ -1,23 +1,22 @@
-import { isBrowsableObjectKey, isMediaKey } from "@/lib/media-types";
+import { isMediaKey } from "@/lib/media-types";
 import { prisma } from "@/lib/prisma";
-import { listPrefix, prefixExists, type S3Folder } from "@/lib/s3";
-import { isTrashFolderPath, TRASH_ROOT } from "@/lib/storage-keys";
+import { isTrashFolderPath } from "@/lib/storage-keys";
 
-export type FolderItem = S3Folder;
+export type FolderItem = {
+  name: string;
+  path: string;
+};
 
 export type MediaListItem = {
+  id: string;
+  name: string;
   s3Key: string;
+  folderPath: string;
   mediaType: string;
   datetimeTaken: Date | null;
   caption: string | null;
   aiCaption: string | null;
   tags: { tag: { id: string; text: string } }[];
-};
-
-export type OtherFileItem = {
-  s3Key: string;
-  size: number;
-  lastModified: Date | null;
 };
 
 export function pathFromSegments(segments: string[] | undefined): string {
@@ -45,64 +44,74 @@ export function mediaTypeFromKey(key: string): string {
   return "photo";
 }
 
-export async function assertPrefixExists(path: string) {
-  return prefixExists(path);
+export function mediaTypeFromName(name: string): string {
+  return mediaTypeFromKey(name);
+}
+
+/** Returns true when the browse path exists (root always exists). */
+export async function assertFolderExists(path: string): Promise<boolean> {
+  if (!path) return true;
+  if (isTrashFolderPath(path)) return false;
+  const folder = await prisma.folder.findFirst({
+    where: { path, deletedAt: null },
+    select: { id: true },
+  });
+  return Boolean(folder);
 }
 
 export async function listFolderContents(path: string): Promise<{
   folders: FolderItem[];
   media: MediaListItem[];
-  otherFiles: OtherFileItem[];
 }> {
   if (isTrashFolderPath(path)) {
-    return { folders: [], media: [], otherFiles: [] };
+    return { folders: [], media: [] };
   }
 
-  const { folders: rawFolders, objects } = await listPrefix(path);
-  const folders = rawFolders.filter(
-    (f) => !(path === "" && f.name === TRASH_ROOT),
-  );
-  const browsable = objects.filter(
-    (o) => isBrowsableObjectKey(o.key) && !isTrashFolderPath(o.key),
-  );
-  const mediaObjects = browsable.filter((o) => isMediaKey(o.key));
-  const otherObjects = browsable.filter((o) => !isMediaKey(o.key));
-  const keys = mediaObjects.map((o) => o.key);
+  let folderId: string | null = null;
+  if (path) {
+    const folder = await prisma.folder.findFirst({
+      where: { path, deletedAt: null },
+      select: { id: true },
+    });
+    if (!folder) {
+      return { folders: [], media: [] };
+    }
+    folderId = folder.id;
+  }
 
-  const meta =
-    keys.length === 0
-      ? []
-      : await prisma.media.findMany({
-          where: { s3Key: { in: keys } },
-          include: { tags: { include: { tag: true } } },
-        });
+  const [childFolders, mediaRows] = await Promise.all([
+    prisma.folder.findMany({
+      where: { parentId: folderId, deletedAt: null },
+      orderBy: { name: "asc" },
+      select: { name: true, path: true },
+    }),
+    prisma.media.findMany({
+      where: { folderId, deletedAt: null },
+      include: { tags: { include: { tag: true } } },
+    }),
+  ]);
 
-  const byKey = new Map(meta.map((m) => [m.s3Key, m]));
-
-  const media: MediaListItem[] = mediaObjects.map((obj) => {
-    const row = byKey.get(obj.key);
-    return {
-      s3Key: obj.key,
-      mediaType: mediaTypeFromKey(obj.key),
-      datetimeTaken: row?.datetimeTaken ?? null,
-      caption: row?.caption ?? null,
-      aiCaption: row?.aiCaption ?? null,
-      tags: row?.tags ?? [],
-    };
-  });
+  const media: MediaListItem[] = mediaRows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    s3Key: row.s3Key,
+    folderPath: path,
+    mediaType: mediaTypeFromName(row.name),
+    datetimeTaken: row.datetimeTaken,
+    caption: row.caption,
+    aiCaption: row.aiCaption,
+    tags: row.tags,
+  }));
 
   media.sort((a, b) => {
     const at = a.datetimeTaken?.getTime() ?? 0;
     const bt = b.datetimeTaken?.getTime() ?? 0;
     if (at !== bt) return bt - at;
-    return a.s3Key.localeCompare(b.s3Key);
+    return a.name.localeCompare(b.name);
   });
 
-  const otherFiles: OtherFileItem[] = otherObjects.map((obj) => ({
-    s3Key: obj.key,
-    size: obj.size,
-    lastModified: obj.lastModified,
-  }));
-
-  return { folders, media, otherFiles };
+  return {
+    folders: childFolders.map((f) => ({ name: f.name, path: f.path })),
+    media,
+  };
 }

@@ -18,7 +18,7 @@ async function main() {
   );
 
   console.log(
-    "Seeded sample tags. Folder structure and media come from S3; captions/tags are created when you edit them in the app.",
+    "Seeded sample tags. Folders/media live in the database; blobs stay in S3.",
   );
 }
 

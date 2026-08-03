@@ -12,7 +12,8 @@
     "db:migrate:dev": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "sync:datetime": "tsx scripts/sync-datetime-taken.ts"
+    "sync:datetime": "tsx scripts/sync-datetime-taken.ts",
+    "backfill:folders": "tsx scripts/backfill-folders.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.3",

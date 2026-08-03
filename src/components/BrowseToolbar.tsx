@@ -90,7 +90,11 @@ export function BrowseToolbar({ path }: Props) {
     }
 
     const batchSize = 40;
-    const uploadedKeys: string[] = [];
+    const uploadedItems: {
+      key: string;
+      folderPath: string;
+      name: string;
+    }[] = [];
 
     try {
       for (let i = 0; i < files.length; i += batchSize) {
@@ -118,7 +122,7 @@ export function BrowseToolbar({ path }: Props) {
           const upload = prepared.uploads[j]!;
           const file = batch[j]!;
           setUploadProgress(
-            `Uploading ${uploadedKeys.length + 1} / ${files.length}…`,
+            `Uploading ${uploadedItems.length + 1} / ${files.length}…`,
           );
 
           const res = await fetch(upload.url, {
@@ -134,12 +138,16 @@ export function BrowseToolbar({ path }: Props) {
               `Upload failed for ${file.webkitRelativePath || file.name} (${res.status})`,
             );
           }
-          uploadedKeys.push(upload.key);
+          uploadedItems.push({
+            key: upload.key,
+            folderPath: upload.folderPath,
+            name: upload.name,
+          });
         }
       }
 
       setUploadProgress("Finishing…");
-      const done = await completeUploadsAction(uploadedKeys);
+      const done = await completeUploadsAction(uploadedItems);
       if (!done.ok) {
         setError(done.error);
         setUploadProgress(null);
@@ -151,8 +159,8 @@ export function BrowseToolbar({ path }: Props) {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
       setUploadProgress(null);
-      if (uploadedKeys.length > 0) {
-        await completeUploadsAction(uploadedKeys).catch(() => undefined);
+      if (uploadedItems.length > 0) {
+        await completeUploadsAction(uploadedItems).catch(() => undefined);
         router.refresh();
       }
     } finally {

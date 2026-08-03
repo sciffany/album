@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { mediaTypeFromKey, type MediaListItem } from "@/lib/folders";
+import { mediaTypeFromName, type MediaListItem } from "@/lib/folders";
 
 export type SearchParams = {
   q?: string;
@@ -15,12 +15,15 @@ export async function searchMedia({
     SELECT m.id,
       MAX(COALESCE(ts_rank(m.search_vector, plainto_tsquery('english', ${query})), 0)) AS rank
     FROM media m
+    LEFT JOIN folders f ON f.id = m.folder_id
     LEFT JOIN media_tags mt ON mt.media_id = m.id
     LEFT JOIN tags t ON t.id = mt.tag_id
     WHERE m.deleted_at IS NULL
       AND (
         m.search_vector @@ plainto_tsquery('english', ${query})
         OR t.text ILIKE ${"%" + query + "%"}
+        OR m.name ILIKE ${"%" + query + "%"}
+        OR f.path ILIKE ${"%" + query + "%"}
         OR m.s3_key ILIKE ${"%" + query + "%"}
       )
     GROUP BY m.id
@@ -35,6 +38,7 @@ export async function searchMedia({
     where: { id: { in: ids } },
     include: {
       tags: { include: { tag: true } },
+      folder: true,
     },
   });
 
@@ -43,8 +47,11 @@ export async function searchMedia({
     .map((id) => byId.get(id))
     .filter(Boolean)
     .map((row) => ({
+      id: row!.id,
+      name: row!.name,
       s3Key: row!.s3Key,
-      mediaType: mediaTypeFromKey(row!.s3Key),
+      folderPath: row!.folder?.path ?? "",
+      mediaType: mediaTypeFromName(row!.name),
       datetimeTaken: row!.datetimeTaken,
       caption: row!.caption,
       aiCaption: row!.aiCaption,

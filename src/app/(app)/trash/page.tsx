@@ -1,6 +1,6 @@
 import { TrashItemRow } from "@/components/TrashItemRow";
 import { listTrashMedia } from "@/lib/media-ops";
-import { mediaTypeFromKey } from "@/lib/folders";
+import { mediaTypeFromName } from "@/lib/folders";
 
 export default async function TrashPage() {
   const items = await listTrashMedia();
@@ -12,9 +12,9 @@ export default async function TrashPage() {
           Recycle bin
         </h1>
         <p className="text-sm text-[var(--muted)]">
-          Soft-deleted files are kept under a hidden <code>_trash/</code>{" "}
-          prefix in your bucket. Restore returns them to their original path;
-          delete forever removes the object from storage.
+          Soft-deleted files stay in storage until you delete them forever.
+          Restore returns them to their folder (or the library root if that
+          folder was also deleted).
         </p>
       </div>
 
@@ -24,16 +24,21 @@ export default async function TrashPage() {
         </p>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {items.map((item) => (
-            <TrashItemRow
-              key={item.s3Key}
-              s3Key={item.s3Key}
-              originalS3Key={item.originalS3Key}
-              deletedAt={item.deletedAt}
-              caption={item.caption ?? item.aiCaption}
-              mediaType={mediaTypeFromKey(item.originalS3Key ?? item.s3Key)}
-            />
-          ))}
+          {items.map((item) => {
+            const displayPath = item.folderPath
+              ? `${item.folderPath}/${item.name}`
+              : item.name;
+            return (
+              <TrashItemRow
+                key={item.s3Key}
+                s3Key={item.s3Key}
+                displayPath={displayPath}
+                deletedAt={item.deletedAt}
+                caption={item.caption ?? item.aiCaption}
+                mediaType={mediaTypeFromName(item.name)}
+              />
+            );
+          })}
         </div>
       )}
     </div>

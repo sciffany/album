@@ -1,5 +1,5 @@
 /**
- * Walk the storage bucket, read capture time from EXIF / QuickTime metadata,
+ * Read capture time from EXIF / QuickTime metadata for DB media rows,
  * and upsert `media.datetime_taken` in Neon.
  *
  * Usage:
@@ -12,7 +12,7 @@ import "dotenv/config";
 
 import { PrismaClient } from "@prisma/client";
 import exifr from "exifr";
-import { getObjectBytes, listAllObjects } from "../src/lib/s3";
+import { getObjectBytes } from "../src/lib/s3";
 
 const IMAGE_EXT = new Set([
   "jpg",
@@ -68,7 +68,7 @@ function parseArgs(argv: string[]): Args {
       console.log(`Usage: npx tsx scripts/sync-datetime-taken.ts [options]
 
 Options:
-  --prefix=<path>     Only process keys under this prefix
+  --prefix=<path>     Only process media whose folder path or s3 key starts with this
   --force             Overwrite existing datetime_taken values
   --dry-run           Parse EXIF but do not write to the database
   --limit=<n>         Process at most n media keys
@@ -174,7 +174,7 @@ async function main() {
   console.log(
     [
       "sync-datetime-taken",
-      args.prefix ? `prefix=${args.prefix}` : "prefix=(root)",
+      args.prefix ? `prefix=${args.prefix}` : "prefix=(all db media)",
       args.force ? "force" : "skip-existing",
       args.dryRun ? "dry-run" : "write",
       `concurrency=${args.concurrency}`,
@@ -185,38 +185,34 @@ async function main() {
   );
 
   try {
-    const objects = await listAllObjects(args.prefix);
-    let keys = objects.map((o) => o.key).filter(isSupportedMedia);
-    keys.sort((a, b) => a.localeCompare(b));
-
-    if (args.limit != null) keys = keys.slice(0, args.limit);
-    console.log(`Found ${keys.length} media object(s) to consider`);
-
-    const existing = await prisma.media.findMany({
-      where: { s3Key: { in: keys } },
-      select: { s3Key: true, datetimeTaken: true },
+    const rows = await prisma.media.findMany({
+      where: {
+        deletedAt: null,
+        ...(args.force ? {} : { datetimeTaken: null }),
+        ...(args.prefix
+          ? {
+              OR: [
+                { s3Key: { startsWith: args.prefix } },
+                { folder: { path: { startsWith: args.prefix } } },
+                { name: { startsWith: args.prefix } },
+              ],
+            }
+          : {}),
+      },
+      select: { id: true, s3Key: true, name: true, datetimeTaken: true },
+      orderBy: { s3Key: "asc" },
+      ...(args.limit != null ? { take: args.limit } : {}),
     });
-    const alreadySet = new Set(
-      existing
-        .filter((row) => row.datetimeTaken != null)
-        .map((row) => row.s3Key),
-    );
 
-    const todo = args.force
-      ? keys
-      : keys.filter((key) => !alreadySet.has(key));
-
-    console.log(
-      args.force
-        ? `Processing all ${todo.length} (force)`
-        : `Processing ${todo.length} missing datetime_taken (${alreadySet.size} already set)`,
-    );
+    const todo = rows.filter((row) => isSupportedMedia(row.name) || isSupportedMedia(row.s3Key));
+    console.log(`Found ${todo.length} media row(s) to consider`);
 
     let updated = 0;
     let skippedNoExif = 0;
     let errors = 0;
 
-    await mapPool(todo, args.concurrency, async (key) => {
+    await mapPool(todo, args.concurrency, async (row) => {
+      const key = row.s3Key;
       try {
         const datetimeTaken = await extractDatetimeTaken(key);
         if (!datetimeTaken) {
@@ -231,10 +227,9 @@ async function main() {
           return;
         }
 
-        await prisma.media.upsert({
-          where: { s3Key: key },
-          create: { s3Key: key, datetimeTaken },
-          update: { datetimeTaken },
+        await prisma.media.update({
+          where: { id: row.id },
+          data: { datetimeTaken },
         });
         updated += 1;
         console.log(`  updated  ${key} → ${datetimeTaken.toISOString()}`);
@@ -246,9 +241,7 @@ async function main() {
     });
 
     console.log(
-      `\nDone. updated=${updated} no-exif=${skippedNoExif} errors=${errors} skipped-existing=${
-        args.force ? 0 : keys.length - todo.length
-      }`,
+      `\nDone. updated=${updated} no-exif=${skippedNoExif} errors=${errors}`,
     );
   } finally {
     await prisma.$disconnect();

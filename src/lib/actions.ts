@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import {
   createFolder,
+  ensureFolderPath,
   listChildFolderPaths,
   moveFolderPrefix,
   moveMediaToFolder,
@@ -18,7 +19,7 @@ import {
 } from "@/lib/media-ops";
 import { prisma } from "@/lib/prisma";
 import { getBucket, objectExists, presignPutObject } from "@/lib/s3";
-import { baseName, normalizeFolderPath } from "@/lib/storage-keys";
+import { assertValidKey, baseName, normalizeFolderPath } from "@/lib/storage-keys";
 import { findOrCreateTags, slugifyTag } from "@/lib/tags";
 
 async function requireUser() {
@@ -36,14 +37,15 @@ function revalidateLibrary() {
 }
 
 async function ensureMedia(s3Key: string) {
-  const key = s3Key.trim();
-  if (!key || key.includes("\0") || key.startsWith("/")) {
-    throw new Error("Invalid S3 key");
-  }
-  return prisma.media.upsert({
-    where: { s3Key: key },
-    create: { s3Key: key },
-    update: {},
+  const key = assertValidKey(s3Key);
+  const existing = await prisma.media.findUnique({ where: { s3Key: key } });
+  if (existing) return existing;
+  return prisma.media.create({
+    data: {
+      s3Key: key,
+      name: baseName(key),
+      folderId: null,
+    },
   });
 }
 
@@ -283,12 +285,12 @@ export async function softDeleteFolderAction(folderPath: string) {
 }
 
 export async function restoreMediaAction(
-  trashKey: string,
-  destinationKey?: string,
+  s3Key: string,
+  destinationFolder?: string,
 ) {
   await requireUser();
   try {
-    const result = await restoreMediaObject(trashKey, destinationKey);
+    const result = await restoreMediaObject(s3Key, destinationFolder);
     revalidateLibrary();
     return { ok: true as const, ...result };
   } catch (err) {
@@ -296,10 +298,10 @@ export async function restoreMediaAction(
   }
 }
 
-export async function purgeMediaAction(trashKey: string) {
+export async function purgeMediaAction(s3Key: string) {
   await requireUser();
   try {
-    await purgeMediaObject(trashKey);
+    await purgeMediaObject(s3Key);
     revalidateLibrary();
     return { ok: true as const };
   } catch (err) {
@@ -337,10 +339,25 @@ export async function presignUploadsAction(
     const uploads = [];
 
     for (const file of resolved) {
+      // Reject display-name collisions in the destination folder.
+      const folderId = await ensureFolderPath(file.folderPath);
+      const clash = await prisma.media.findFirst({
+        where: {
+          folderId,
+          name: file.name,
+          deletedAt: null,
+        },
+      });
+      if (clash) {
+        return {
+          ok: false as const,
+          error: `Already exists: ${file.folderPath ? `${file.folderPath}/` : ""}${file.name}`,
+        };
+      }
       if (await objectExists(file.key)) {
         return {
           ok: false as const,
-          error: `Already exists: ${file.key}`,
+          error: `Storage key collision; retry upload`,
         };
       }
       const url = await presignPutObject(bucket, file.key, file.contentType);
@@ -348,6 +365,8 @@ export async function presignUploadsAction(
         key: file.key,
         url,
         contentType: file.contentType,
+        folderPath: file.folderPath,
+        name: file.name,
       });
     }
 
@@ -360,19 +379,31 @@ export async function presignUploadsAction(
   }
 }
 
+export type CompleteUploadItem = {
+  key: string;
+  folderPath: string;
+  name: string;
+};
+
 /** Call after client PUTs succeed so browse/search caches refresh. */
-export async function completeUploadsAction(keys: string[]) {
+export async function completeUploadsAction(items: CompleteUploadItem[]) {
   await requireUser();
   try {
-    for (const key of keys) {
-      const trimmed = key.trim();
-      if (!trimmed || trimmed.includes("\0") || trimmed.startsWith("/")) {
-        throw new Error("Invalid S3 key");
-      }
+    for (const item of items) {
+      const key = assertValidKey(item.key);
+      const folderId = await ensureFolderPath(item.folderPath || "");
       await prisma.media.upsert({
-        where: { s3Key: trimmed },
-        create: { s3Key: trimmed },
-        update: {},
+        where: { s3Key: key },
+        create: {
+          s3Key: key,
+          name: item.name,
+          folderId,
+        },
+        update: {
+          name: item.name,
+          folderId,
+          deletedAt: null,
+        },
       });
     }
     revalidateLibrary();

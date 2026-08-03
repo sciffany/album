@@ -8,19 +8,45 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-/// Metadata only — folder structure and URLs come from S3.
+/// Library folder tree. Browse paths are materialized in `path`.
+model Folder {
+  id        String    @id @default(cuid())
+  name      String
+  parentId  String?   @map("parent_id")
+  parent    Folder?   @relation("FolderTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children  Folder[]  @relation("FolderTree")
+  /// Cached path for browse URLs, e.g. "Family/2024". Empty string is not used — root has no row.
+  /// Active-path uniqueness is a partial SQL index (`folders_path_active_key`).
+  path      String
+  media     Media[]
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([path])
+  @@index([parentId])
+  @@index([deletedAt])
+  @@map("folders")
+}
+
+/// Metadata for a library media blob. `s3Key` is an immutable storage address.
 model Media {
   id            String     @id @default(cuid())
+  folderId      String?    @map("folder_id")
+  folder        Folder?    @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  /// Display filename within the folder (not the S3 key).
+  name          String
   s3Key         String     @unique @map("s3_key")
   caption       String?
   aiCaption     String?    @map("ai_caption")
   datetimeTaken DateTime?  @map("datetime_taken")
-  /// Set when the object was soft-deleted into the `_trash/` prefix.
   deletedAt     DateTime?  @map("deleted_at")
-  /// Key before soft-delete; used to restore out of the recycle bin.
-  originalS3Key String?    @map("original_s3_key")
   tags          MediaTag[]
 
+  /// Uniqueness among active rows is enforced via partial indexes in SQL
+  /// (`media_folder_id_name_active_key` in migration;
+  /// `media_root_name_active_key` after folder backfill).
+  @@index([folderId, name])
+  @@index([folderId])
   @@index([datetimeTaken])
   @@index([deletedAt])
   @@map("media")

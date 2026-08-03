@@ -1,5 +1,8 @@
-/** Reserved top-level prefix for soft-deleted objects. */
+/** Legacy trash prefix — no longer written; kept for backfill / old object detection. */
 export const TRASH_ROOT = "_trash";
+
+/** Stable blob prefix for new uploads. */
+export const MEDIA_KEY_PREFIX = "media";
 
 export function assertValidKey(key: string, label = "S3 key"): string {
   const trimmed = key.trim();
@@ -13,7 +16,7 @@ export function assertValidKey(key: string, label = "S3 key"): string {
   return trimmed;
 }
 
-/** Normalize a folder path (no leading/trailing slashes). Empty string = bucket root. */
+/** Normalize a folder path (no leading/trailing slashes). Empty string = library root. */
 export function normalizeFolderPath(path: string): string {
   return path
     .trim()
@@ -43,15 +46,8 @@ export function isTrashFolderPath(path: string): boolean {
   );
 }
 
-/** Build a unique trash key that preserves the original path under a timestamped folder. */
-export function makeTrashKey(originalKey: string): string {
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const id = crypto.randomUUID().slice(0, 8);
-  return `${TRASH_ROOT}/${stamp}-${id}/${originalKey}`;
-}
-
 /**
- * Recover the pre-delete key from `_trash/<stamp-id>/<originalKey>`.
+ * Recover the pre-delete key from legacy `_trash/<stamp-id>/<originalKey>`.
  * Returns null when the trash key shape is unexpected.
  */
 export function originalKeyFromTrashKey(trashKey: string): string | null {
@@ -69,13 +65,6 @@ export function joinKey(folderPath: string, fileName: string): string {
     throw new Error("Invalid file name");
   }
   return folder ? `${folder}/${name}` : name;
-}
-
-/** Zero-byte S3 key that materializes an empty folder prefix. */
-export function folderMarkerKey(folderPath: string): string {
-  const folder = assertValidFolderPath(folderPath, "folder path");
-  if (!folder) throw new Error("Cannot create a marker for the bucket root");
-  return `${folder}/`;
 }
 
 /** Validate a single folder name segment (no slashes). */
@@ -97,12 +86,13 @@ export function assertValidFolderName(name: string): string {
 /**
  * Join a browse folder with a relative upload path (may include nested
  * directories from a directory picker). Rejects `..` and empty segments.
+ * Returns `{ folderPath, fileName }` for DB placement (not an S3 key).
  */
-export function joinRelativeKey(
-  folderPath: string,
+export function splitUploadRelativePath(
+  destinationFolder: string,
   relativePath: string,
-): string {
-  const folder = assertValidFolderPath(folderPath || "");
+): { folderPath: string; fileName: string } {
+  const folder = assertValidFolderPath(destinationFolder || "");
   const normalized = relativePath
     .trim()
     .replace(/\\/g, "/")
@@ -122,8 +112,46 @@ export function joinRelativeKey(
     }
   }
 
-  const key = folder ? `${folder}/${normalized}` : normalized;
-  return assertValidKey(key);
+  const fileName = segments[segments.length - 1]!;
+  const relDir = segments.slice(0, -1).join("/");
+  const folderPath = relDir
+    ? folder
+      ? `${folder}/${relDir}`
+      : relDir
+    : folder;
+  return {
+    folderPath: assertValidFolderPath(folderPath || ""),
+    fileName: assertValidFileName(fileName),
+  };
+}
+
+export function assertValidFileName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("File name is required");
+  if (
+    trimmed.includes("/") ||
+    trimmed.includes("\0") ||
+    trimmed.includes("..") ||
+    trimmed === "." ||
+    trimmed === ".."
+  ) {
+    throw new Error("Invalid file name");
+  }
+  return trimmed;
+}
+
+/** Opaque immutable object key for a new upload. */
+export function makeOpaqueMediaKey(fileName: string): string {
+  const ext = extFromFileName(fileName);
+  const id = crypto.randomUUID().replace(/-/g, "");
+  return ext ? `${MEDIA_KEY_PREFIX}/${id}.${ext}` : `${MEDIA_KEY_PREFIX}/${id}`;
+}
+
+function extFromFileName(fileName: string): string {
+  const base = fileName.split("/").pop() ?? fileName;
+  const i = base.lastIndexOf(".");
+  if (i <= 0 || i === base.length - 1) return "";
+  return base.slice(i + 1).toLowerCase();
 }
 
 export function parentFolder(key: string): string {

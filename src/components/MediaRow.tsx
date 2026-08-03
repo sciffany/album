@@ -7,7 +7,10 @@ import { MediaActions } from "@/components/MediaActions";
 import { SelectionCheckbox } from "@/components/SelectionCheckbox";
 
 export type MediaItem = {
+  id: string;
+  name: string;
   s3Key: string;
+  folderPath: string;
   mediaType: string;
   caption: string | null;
   aiCaption: string | null;
@@ -38,10 +41,6 @@ function formatDate(value: Date | string | null) {
   return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
 }
 
-function fileName(key: string) {
-  return key.split("/").pop() || key;
-}
-
 export function MediaRow({
   media,
   selected = false,
@@ -67,7 +66,7 @@ export function MediaRow({
         {onToggleSelect && (
           <SelectionCheckbox
             checked={selected}
-            label={`Select ${fileName(media.s3Key)}`}
+            label={`Select ${media.name}`}
             onToggle={onToggleSelect}
           />
         )}
@@ -81,7 +80,7 @@ export function MediaRow({
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={objectHref}
-              alt={media.caption || fileName(media.s3Key)}
+              alt={media.caption || media.name}
               className="h-full w-full object-cover"
               loading="lazy"
               decoding="async"
@@ -106,10 +105,10 @@ export function MediaRow({
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         <p className="truncate text-xs text-[var(--muted)]">
           {dateLabel ? `${dateLabel} · ` : ""}
-          {fileName(media.s3Key)}
+          {media.name}
         </p>
         <TagEditor
-          key={`tags-${media.s3Key}`}
+          key={`tags-${media.id}`}
           s3Key={media.s3Key}
           initialTags={media.tags.map((t) => ({
             id: t.tag.id,
@@ -117,12 +116,16 @@ export function MediaRow({
           }))}
         />
         <CaptionEditor
-          key={`caption-${media.s3Key}`}
+          key={`caption-${media.id}`}
           s3Key={media.s3Key}
           initialCaption={media.caption}
           aiCaption={media.aiCaption}
         />
-        <MediaActions s3Key={media.s3Key} />
+        <MediaActions
+          s3Key={media.s3Key}
+          name={media.name}
+          folderPath={media.folderPath}
+        />
       </div>
     </article>
   );

@@ -13,10 +13,6 @@ import { BulkMoveDialog } from "@/components/BulkMoveDialog";
 import { BulkTagDialog } from "@/components/BulkTagDialog";
 import { FolderActions } from "@/components/FolderActions";
 import { MediaRow, type MediaItem } from "@/components/MediaRow";
-import {
-  OtherFileRow,
-  type OtherFileItem,
-} from "@/components/OtherFileRow";
 import { SelectionCheckbox } from "@/components/SelectionCheckbox";
 import {
   selectionKey,
@@ -31,7 +27,6 @@ type FolderItem = {
 function buildSelectable(
   folders: FolderItem[],
   media: MediaItem[],
-  otherFiles: OtherFileItem[],
 ): SelectedItem[] {
   return [
     ...folders.map(
@@ -44,28 +39,19 @@ function buildSelectable(
         isMedia: true,
       }),
     ),
-    ...otherFiles.map(
-      (file): SelectedItem => ({
-        kind: "file",
-        s3Key: file.s3Key,
-        isMedia: false,
-      }),
-    ),
   ];
 }
 
 export function FolderGrid({
   folders,
   media,
-  otherFiles = [],
 }: {
   folders: FolderItem[];
   media: MediaItem[];
-  otherFiles?: OtherFileItem[];
 }) {
   const selectable = useMemo(
-    () => buildSelectable(folders, media, otherFiles),
-    [folders, media, otherFiles],
+    () => buildSelectable(folders, media),
+    [folders, media],
   );
 
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
@@ -160,7 +146,7 @@ export function FolderGrid({
     setTagOpen(true);
   }
 
-  if (folders.length === 0 && media.length === 0 && otherFiles.length === 0) {
+  if (folders.length === 0 && media.length === 0) {
     return (
       <p className="py-16 text-center text-[var(--muted)]">
         This folder is empty. Create a subfolder or upload photos and videos.
@@ -170,7 +156,6 @@ export function FolderGrid({
 
   const folderOffset = 0;
   const mediaOffset = folders.length;
-  const otherOffset = folders.length + media.length;
 
   return (
     <div className="space-y-4">
@@ -243,7 +228,7 @@ export function FolderGrid({
             };
             return (
               <MediaRow
-                key={item.s3Key}
+                key={item.id}
                 media={item}
                 selected={selectedKeys.has(selectionKey(sel))}
                 onToggleSelect={(e) => toggleAt(index, e)}
@@ -251,37 +236,6 @@ export function FolderGrid({
             );
           })}
         </div>
-
-        {otherFiles.length > 0 && (
-          <section className="space-y-3">
-            <div>
-              <h2 className="font-[family-name:var(--font-display)] text-xl text-[var(--ink)]">
-                Other files
-              </h2>
-              <p className="text-sm text-[var(--muted)]">
-                Non-media files in this folder. Download, move, or delete them.
-              </p>
-            </div>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {otherFiles.map((file, i) => {
-                const index = otherOffset + i;
-                const sel: SelectedItem = {
-                  kind: "file",
-                  s3Key: file.s3Key,
-                  isMedia: false,
-                };
-                return (
-                  <OtherFileRow
-                    key={file.s3Key}
-                    file={file}
-                    selected={selectedKeys.has(selectionKey(sel))}
-                    onToggleSelect={(e) => toggleAt(index, e)}
-                  />
-                );
-              })}
-            </div>
-          </section>
-        )}
       </div>
 
       <BulkMoveDialog
