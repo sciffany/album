@@ -13,6 +13,7 @@ import {
   createFolderAction,
   presignUploadsAction,
 } from "@/lib/actions";
+import { FolderShareControls } from "@/components/FolderShareControls";
 
 /** Dotfiles (e.g. .DS_Store) are skipped; everything else is uploadable. */
 function isAllowedUploadFile(file: File): boolean {
@@ -190,6 +191,7 @@ export function BrowseToolbar({ path }: Props) {
             Download folder
           </a>
         ) : null}
+        {path ? <FolderShareControls path={path} /> : null}
         <input
           ref={fileInputRef}
           type="file"

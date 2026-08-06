@@ -22,7 +22,14 @@ import { extractDatetimeTaken } from "@/lib/datetime-taken";
 import { prisma } from "@/lib/prisma";
 import { getBucket, objectExists, presignPutObject } from "@/lib/s3";
 import { assertValidKey, baseName, normalizeFolderPath } from "@/lib/storage-keys";
+import {
+  createOrGetFolderShare,
+  getActiveShareByFolderId,
+  revokeFolderShare,
+  sharePath,
+} from "@/lib/shares";
 import { findOrCreateTags, slugifyTag } from "@/lib/tags";
+import { headers } from "next/headers";
 
 async function requireUser() {
   const session = await auth();
@@ -419,6 +426,68 @@ export async function completeUploadsAction(items: CompleteUploadItem[]) {
     return {
       ok: false as const,
       error: actionError(err, "Could not finish upload"),
+    };
+  }
+}
+
+async function absoluteShareUrl(token: string): Promise<string> {
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  const proto = h.get("x-forwarded-proto") ?? "http";
+  const path = sharePath(token);
+  if (!host) return path;
+  return `${proto}://${host}${path}`;
+}
+
+export async function getFolderShareAction(folderPath: string) {
+  await requireUser();
+  try {
+    const path = normalizeFolderPath(folderPath || "");
+    if (!path) {
+      return { ok: true as const, url: null as string | null };
+    }
+    const folder = await prisma.folder.findFirst({
+      where: { path, deletedAt: null },
+      select: { id: true },
+    });
+    if (!folder) {
+      return { ok: false as const, error: "Folder not found" };
+    }
+    const share = await getActiveShareByFolderId(folder.id);
+    if (!share) {
+      return { ok: true as const, url: null as string | null };
+    }
+    return { ok: true as const, url: await absoluteShareUrl(share.token) };
+  } catch (err) {
+    return {
+      ok: false as const,
+      error: actionError(err, "Could not load share link"),
+    };
+  }
+}
+
+export async function createOrGetFolderShareAction(folderPath: string) {
+  const user = await requireUser();
+  try {
+    const { token } = await createOrGetFolderShare(folderPath, user.id);
+    return { ok: true as const, url: await absoluteShareUrl(token) };
+  } catch (err) {
+    return {
+      ok: false as const,
+      error: actionError(err, "Could not create share link"),
+    };
+  }
+}
+
+export async function revokeFolderShareAction(folderPath: string) {
+  await requireUser();
+  try {
+    const revoked = await revokeFolderShare(folderPath);
+    return { ok: true as const, revoked };
+  } catch (err) {
+    return {
+      ok: false as const,
+      error: actionError(err, "Could not revoke share link"),
     };
   }
 }

@@ -18,9 +18,7 @@ function newId(): string {
 }
 
 /** Ensure every segment of `path` exists; returns the leaf folder id (null for root). */
-export async function ensureFolderPath(
-  path: string,
-): Promise<string | null> {
+export async function ensureFolderPath(path: string): Promise<string | null> {
   const normalized = assertValidFolderPath(path || "");
   if (!normalized) return null;
 

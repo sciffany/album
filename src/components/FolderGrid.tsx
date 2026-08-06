@@ -18,6 +18,10 @@ import {
   selectionKey,
   type SelectedItem,
 } from "@/lib/selection";
+import {
+  relativePathFromShareRoot,
+  sharePath,
+} from "@/lib/share-paths";
 
 type FolderItem = {
   name: string;
@@ -42,12 +46,31 @@ function buildSelectable(
   ];
 }
 
+function folderBrowseHref(
+  folderPath: string,
+  share?: { token: string; rootPath: string },
+): string {
+  if (share) {
+    const relative = relativePathFromShareRoot(share.rootPath, folderPath);
+    return sharePath(share.token, relative);
+  }
+  return `/browse/${folderPath
+    .split("/")
+    .map(encodeURIComponent)
+    .join("/")}`;
+}
+
 export function FolderGrid({
   folders,
   media,
+  readOnly = false,
+  share,
 }: {
   folders: FolderItem[];
   media: MediaItem[];
+  readOnly?: boolean;
+  /** When set (with readOnly), folder links stay under the share URL. */
+  share?: { token: string; rootPath: string };
 }) {
   const selectable = useMemo(
     () => buildSelectable(folders, media),
@@ -65,6 +88,7 @@ export function FolderGrid({
   }>({ s3Keys: [], tagLists: [] });
 
   useEffect(() => {
+    if (readOnly) return;
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
         setSelectedKeys(new Set());
@@ -73,7 +97,7 @@ export function FolderGrid({
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [readOnly]);
 
   const selectedItems = useMemo(
     () => selectable.filter((item) => selectedKeys.has(selectionKey(item))),
@@ -149,7 +173,9 @@ export function FolderGrid({
   if (folders.length === 0 && media.length === 0) {
     return (
       <p className="py-16 text-center text-[var(--muted)]">
-        This folder is empty. Create a subfolder or upload files.
+        {readOnly
+          ? "This folder is empty."
+          : "This folder is empty. Create a subfolder or upload files."}
       </p>
     );
   }
@@ -159,14 +185,16 @@ export function FolderGrid({
 
   return (
     <div className="space-y-4">
-      <BulkActionBar
-        count={selectedItems.length}
-        mediaCount={mediaSelected.length}
-        onMove={openMove}
-        onTags={openTags}
-        onSelectAll={selectAll}
-        onClear={clearSelection}
-      />
+      {!readOnly && (
+        <BulkActionBar
+          count={selectedItems.length}
+          mediaCount={mediaSelected.length}
+          onMove={openMove}
+          onTags={openTags}
+          onSelectAll={selectAll}
+          onClear={clearSelection}
+        />
+      )}
 
       <div className="space-y-8">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -174,7 +202,7 @@ export function FolderGrid({
             const index = folderOffset + i;
             const item: SelectedItem = { kind: "folder", path: folder.path };
             const key = selectionKey(item);
-            const isSelected = selectedKeys.has(key);
+            const isSelected = !readOnly && selectedKeys.has(key);
             return (
               <div
                 key={folder.path}
@@ -185,16 +213,15 @@ export function FolderGrid({
                 }`}
               >
                 <div className="relative">
-                  <SelectionCheckbox
-                    checked={isSelected}
-                    label={`Select folder ${folder.name}`}
-                    onToggle={(e) => toggleAt(index, e)}
-                  />
+                  {!readOnly && (
+                    <SelectionCheckbox
+                      checked={isSelected}
+                      label={`Select folder ${folder.name}`}
+                      onToggle={(e) => toggleAt(index, e)}
+                    />
+                  )}
                   <Link
-                    href={`/browse/${folder.path
-                      .split("/")
-                      .map(encodeURIComponent)
-                      .join("/")}`}
+                    href={folderBrowseHref(folder.path, share)}
                     className="flex items-center gap-3"
                   >
                     <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-md bg-[var(--folder)] sm:h-36 sm:w-36">
@@ -215,7 +242,9 @@ export function FolderGrid({
                     </div>
                   </Link>
                 </div>
-                <FolderActions path={folder.path} name={folder.name} />
+                {!readOnly && (
+                  <FolderActions path={folder.path} name={folder.name} />
+                )}
               </div>
             );
           })}
@@ -230,32 +259,39 @@ export function FolderGrid({
               <MediaRow
                 key={item.id}
                 media={item}
-                selected={selectedKeys.has(selectionKey(sel))}
-                onToggleSelect={(e) => toggleAt(index, e)}
+                readOnly={readOnly}
+                selected={!readOnly && selectedKeys.has(selectionKey(sel))}
+                onToggleSelect={
+                  readOnly ? undefined : (e) => toggleAt(index, e)
+                }
               />
             );
           })}
         </div>
       </div>
 
-      <BulkMoveDialog
-        items={moveItems}
-        open={moveOpen}
-        onClose={() => setMoveOpen(false)}
-        onDone={clearSelection}
-      />
-      <BulkTagDialog
-        s3Keys={tagTargets.s3Keys}
-        tagLists={tagTargets.tagLists}
-        open={tagOpen}
-        onClose={() => {
-          setTagOpen(false);
-          clearSelection();
-        }}
-        onDone={() => {
-          /* selection cleared when dialog closes */
-        }}
-      />
+      {!readOnly && (
+        <>
+          <BulkMoveDialog
+            items={moveItems}
+            open={moveOpen}
+            onClose={() => setMoveOpen(false)}
+            onDone={clearSelection}
+          />
+          <BulkTagDialog
+            s3Keys={tagTargets.s3Keys}
+            tagLists={tagTargets.tagLists}
+            open={tagOpen}
+            onClose={() => {
+              setTagOpen(false);
+              clearSelection();
+            }}
+            onDone={() => {
+              /* selection cleared when dialog closes */
+            }}
+          />
+        </>
+      )}
     </div>
   );
 }

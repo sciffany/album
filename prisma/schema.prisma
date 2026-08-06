@@ -10,22 +10,37 @@ datasource db {
 
 /// Library folder tree. Browse paths are materialized in `path`.
 model Folder {
-  id        String    @id @default(cuid())
+  id        String        @id @default(cuid())
   name      String
-  parentId  String?   @map("parent_id")
-  parent    Folder?   @relation("FolderTree", fields: [parentId], references: [id], onDelete: Restrict)
-  children  Folder[]  @relation("FolderTree")
+  parentId  String?       @map("parent_id")
+  parent    Folder?       @relation("FolderTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children  Folder[]      @relation("FolderTree")
   /// Cached path for browse URLs, e.g. "Family/2024". Empty string is not used — root has no row.
   /// Active-path uniqueness is a partial SQL index (`folders_path_active_key`).
   path      String
   media     Media[]
-  deletedAt DateTime? @map("deleted_at")
-  createdAt DateTime  @default(now()) @map("created_at")
+  shares    FolderShare[]
+  deletedAt DateTime?     @map("deleted_at")
+  createdAt DateTime      @default(now()) @map("created_at")
 
   @@index([path])
   @@index([parentId])
   @@index([deletedAt])
   @@map("folders")
+}
+
+/// Secret URL share for a folder (and nested subfolders). One active share per folder.
+model FolderShare {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  folderId  String    @map("folder_id")
+  folder    Folder    @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  createdBy String?   @map("created_by")
+  createdAt DateTime  @default(now()) @map("created_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  @@index([folderId])
+  @@map("folder_shares")
 }
 
 /// Metadata for a library media blob. `s3Key` is an immutable storage address.

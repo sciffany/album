@@ -47,10 +47,12 @@ export function MediaRow({
   media,
   selected = false,
   onToggleSelect,
+  readOnly = false,
 }: {
   media: MediaItem;
   selected?: boolean;
   onToggleSelect?: (e: MouseEvent) => void;
+  readOnly?: boolean;
 }) {
   const [thumbFailed, setThumbFailed] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
@@ -69,7 +71,7 @@ export function MediaRow({
       }`}
     >
       <div className="relative h-28 w-28 shrink-0 sm:h-36 sm:w-36">
-        {onToggleSelect && (
+        {!readOnly && onToggleSelect && (
           <SelectionCheckbox
             checked={selected}
             label={`Select ${media.name}`}
@@ -146,25 +148,49 @@ export function MediaRow({
           {dateLabel ? `${dateLabel} · ` : ""}
           {media.name}
         </p>
-        <TagEditor
-          key={`tags-${media.id}`}
-          s3Key={media.s3Key}
-          initialTags={media.tags.map((t) => ({
-            id: t.tag.id,
-            text: t.tag.text,
-          }))}
-        />
-        <CaptionEditor
-          key={`caption-${media.id}`}
-          s3Key={media.s3Key}
-          initialCaption={media.caption}
-          aiCaption={media.aiCaption}
-        />
-        <MediaActions
-          s3Key={media.s3Key}
-          name={media.name}
-          folderPath={media.folderPath}
-        />
+        {readOnly ? (
+          <>
+            {media.tags.length > 0 && (
+              <ul className="flex flex-wrap gap-1">
+                {media.tags.map((t) => (
+                  <li
+                    key={t.tag.id}
+                    className="rounded-md bg-[var(--surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--muted)]"
+                  >
+                    {t.tag.text}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {(media.caption || media.aiCaption) && (
+              <p className="line-clamp-3 text-sm text-[var(--ink)]">
+                {media.caption || media.aiCaption}
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            <TagEditor
+              key={`tags-${media.id}`}
+              s3Key={media.s3Key}
+              initialTags={media.tags.map((t) => ({
+                id: t.tag.id,
+                text: t.tag.text,
+              }))}
+            />
+            <CaptionEditor
+              key={`caption-${media.id}`}
+              s3Key={media.s3Key}
+              initialCaption={media.caption}
+              aiCaption={media.aiCaption}
+            />
+            <MediaActions
+              s3Key={media.s3Key}
+              name={media.name}
+              folderPath={media.folderPath}
+            />
+          </>
+        )}
       </div>
 
       <MediaViewer

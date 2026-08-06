@@ -12,6 +12,7 @@ import {
   renameFolderAction,
   softDeleteFolderAction,
 } from "@/lib/actions";
+import { FolderShareControls } from "@/components/FolderShareControls";
 import { parentFolder } from "@/lib/storage-keys";
 
 export function FolderActions({
@@ -136,6 +137,7 @@ export function FolderActions({
       >
         Download
       </a>
+      <FolderShareControls path={path} compact />
       <button
         type="button"
         onClick={onRenameOpen}

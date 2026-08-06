@@ -2,18 +2,22 @@ import Link from "next/link";
 
 export function FolderBreadcrumb({
   crumbs,
+  rootHref = "/browse",
+  rootLabel = "Library",
 }: {
   crumbs: { name: string; href: string }[];
+  rootHref?: string;
+  rootLabel?: string;
 }) {
   return (
     <nav aria-label="Breadcrumb" className="text-sm text-[var(--muted)]">
       <ol className="flex flex-wrap items-center gap-1">
         <li>
           <Link
-            href="/browse"
+            href={rootHref}
             className="font-medium text-[var(--ink)] hover:text-[var(--accent)]"
           >
-            Library
+            {rootLabel}
           </Link>
         </li>
         {crumbs.map((crumb) => (
