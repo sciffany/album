@@ -6,6 +6,7 @@ import { CaptionEditor } from "@/components/CaptionEditor";
 import { MediaActions } from "@/components/MediaActions";
 import { MediaViewer } from "@/components/MediaViewer";
 import { SelectionCheckbox } from "@/components/SelectionCheckbox";
+import { extFromKey } from "@/lib/media-types";
 
 export type MediaItem = {
   id: string;
@@ -56,6 +57,8 @@ export function MediaRow({
   const objectHref = `/api/s3/object?key=${encodeURIComponent(media.s3Key)}`;
   const dateLabel = formatDate(media.datetimeTaken);
   const isVideo = media.mediaType === "video";
+  const isFile = media.mediaType === "file";
+  const ext = extFromKey(media.name);
 
   return (
     <article
@@ -79,7 +82,28 @@ export function MediaRow({
           className="relative block h-full w-full overflow-hidden rounded-md bg-[var(--surface-2)] text-left"
           aria-label={`View ${media.name}`}
         >
-          {!thumbFailed && !isVideo ? (
+          {isFile ? (
+            <span className="flex h-full w-full flex-col items-center justify-center gap-2">
+              <svg
+                viewBox="0 0 24 24"
+                className="h-10 w-10 text-[var(--muted)]"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                aria-hidden
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-6z"
+                />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14 2v6h6" />
+              </svg>
+              <span className="max-w-[85%] truncate rounded bg-black/60 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-white">
+                {ext || "file"}
+              </span>
+            </span>
+          ) : !thumbFailed && !isVideo ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={objectHref}
@@ -109,7 +133,7 @@ export function MediaRow({
               View
             </span>
           )}
-          {media.mediaType !== "photo" && (
+          {media.mediaType !== "photo" && !isFile && (
             <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-white">
               {media.mediaType}
             </span>

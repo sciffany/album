@@ -14,33 +14,10 @@ import {
   presignUploadsAction,
 } from "@/lib/actions";
 
-const MEDIA_ACCEPT =
-  ".jpg,.jpeg,.png,.gif,.webp,.heic,.heif,.tif,.tiff,.bmp,.mp4,.mov,.m4v,.webm,.mkv,.avi,image/*,video/*";
-
-const MEDIA_EXT = new Set([
-  "jpg",
-  "jpeg",
-  "png",
-  "gif",
-  "webp",
-  "heic",
-  "heif",
-  "tif",
-  "tiff",
-  "bmp",
-  "mp4",
-  "mov",
-  "m4v",
-  "webm",
-  "mkv",
-  "avi",
-]);
-
-function isAllowedMediaFile(file: File): boolean {
+/** Dotfiles (e.g. .DS_Store) are skipped; everything else is uploadable. */
+function isAllowedUploadFile(file: File): boolean {
   const base = file.name.split("/").pop() ?? file.name;
-  if (base.startsWith(".")) return false;
-  const ext = base.split(".").pop()?.toLowerCase() ?? "";
-  return MEDIA_EXT.has(ext);
+  return Boolean(base) && !base.startsWith(".");
 }
 
 type Props = {
@@ -82,10 +59,10 @@ export function BrowseToolbar({ path }: Props) {
     setError(null);
 
     const files = Array.from(fileList).filter(
-      (f) => f.size > 0 && isAllowedMediaFile(f),
+      (f) => f.size > 0 && isAllowedUploadFile(f),
     );
     if (!files.length) {
-      setError("No supported media files in the selection");
+      setError("No uploadable files in the selection");
       return;
     }
 
@@ -216,7 +193,6 @@ export function BrowseToolbar({ path }: Props) {
         <input
           ref={fileInputRef}
           type="file"
-          accept={MEDIA_ACCEPT}
           multiple
           className="hidden"
           onChange={onFilesSelected}
@@ -230,7 +206,6 @@ export function BrowseToolbar({ path }: Props) {
             }
           }}
           type="file"
-          accept={MEDIA_ACCEPT}
           multiple
           className="hidden"
           onChange={onFilesSelected}

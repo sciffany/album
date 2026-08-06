@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { extFromKey } from "@/lib/media-types";
 
 export function MediaViewer({
   open,
@@ -19,7 +20,9 @@ export function MediaViewer({
 }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const isVideo = mediaType === "video";
+  const isFile = mediaType === "file";
   const label = caption || name;
+  const ext = extFromKey(name);
 
   useEffect(() => {
     if (!open) return;
@@ -73,7 +76,38 @@ export function MediaViewer({
           if (e.target === e.currentTarget) onClose();
         }}
       >
-        {isVideo ? (
+        {isFile ? (
+          <div className="flex max-w-sm flex-col items-center gap-4 rounded-lg bg-white/10 px-8 py-10 text-center text-white">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-14 w-14 text-white/80"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              aria-hidden
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-6z"
+              />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M14 2v6h6" />
+            </svg>
+            <div>
+              <p className="text-sm font-medium">{name}</p>
+              <p className="mt-1 text-xs text-white/60">
+                {ext ? `.${ext} file` : "File"} — no in-browser preview
+              </p>
+            </div>
+            <a
+              href={src}
+              download={name}
+              className="rounded-md bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-white/90"
+            >
+              Download
+            </a>
+          </div>
+        ) : isVideo ? (
           // eslint-disable-next-line jsx-a11y/media-has-caption
           <video
             key={src}

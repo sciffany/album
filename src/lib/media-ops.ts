@@ -1,4 +1,4 @@
-import { isMediaKey } from "@/lib/media-types";
+import { isBrowsableObjectKey } from "@/lib/media-types";
 import { prisma } from "@/lib/prisma";
 import { deleteObject } from "@/lib/s3";
 import {
@@ -176,8 +176,8 @@ export function resolveUploadKeys(
       destinationFolder,
       file.relativePath,
     );
-    if (!isMediaKey(fileName)) {
-      throw new Error(`Unsupported media type: ${file.relativePath}`);
+    if (!isBrowsableObjectKey(fileName)) {
+      throw new Error(`Unsupported file: ${file.relativePath}`);
     }
 
     const nameKey = `${folderPath}\0${fileName}`;

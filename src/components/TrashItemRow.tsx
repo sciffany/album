@@ -71,7 +71,11 @@ export function TrashItemRow({
   return (
     <article className="flex gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)]/60 p-2 sm:gap-4">
       <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-md bg-[var(--surface-2)] sm:h-36 sm:w-36">
-        {!thumbFailed ? (
+        {mediaType === "file" || thumbFailed ? (
+          <span className="flex h-full w-full items-center justify-center text-xs text-[var(--muted)]">
+            No preview
+          </span>
+        ) : (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={objectHref}
@@ -81,10 +85,6 @@ export function TrashItemRow({
             decoding="async"
             onError={() => setThumbFailed(true)}
           />
-        ) : (
-          <span className="flex h-full w-full items-center justify-center text-xs text-[var(--muted)]">
-            No preview
-          </span>
         )}
         {mediaType !== "photo" && (
           <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-white">
