@@ -340,9 +340,10 @@ export async function presignUploadsAction(
     const resolved = resolveUploadKeys(destinationFolder, files);
     const bucket = getBucket();
     const uploads = [];
+    const conflicts: string[] = [];
 
     for (const file of resolved) {
-      // Reject display-name collisions in the destination folder.
+      // Skip display-name collisions; still prepare the rest of the batch.
       const folderId = await ensureFolderPath(file.folderPath);
       const clash = await prisma.media.findFirst({
         where: {
@@ -352,10 +353,10 @@ export async function presignUploadsAction(
         },
       });
       if (clash) {
-        return {
-          ok: false as const,
-          error: `Already exists: ${file.folderPath ? `${file.folderPath}/` : ""}${file.name}`,
-        };
+        conflicts.push(
+          file.folderPath ? `${file.folderPath}/${file.name}` : file.name,
+        );
+        continue;
       }
       if (await objectExists(file.key)) {
         return {
@@ -370,10 +371,11 @@ export async function presignUploadsAction(
         contentType: file.contentType,
         folderPath: file.folderPath,
         name: file.name,
+        relativePath: file.relativePath,
       });
     }
 
-    return { ok: true as const, uploads };
+    return { ok: true as const, uploads, conflicts };
   } catch (err) {
     return {
       ok: false as const,

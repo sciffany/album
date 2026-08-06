@@ -73,6 +73,7 @@ export function BrowseToolbar({ path }: Props) {
       folderPath: string;
       name: string;
     }[] = [];
+    const conflicts: string[] = [];
 
     try {
       for (let i = 0; i < files.length; i += batchSize) {
@@ -96,11 +97,20 @@ export function BrowseToolbar({ path }: Props) {
           return;
         }
 
-        for (let j = 0; j < prepared.uploads.length; j++) {
-          const upload = prepared.uploads[j]!;
-          const file = batch[j]!;
+        conflicts.push(...prepared.conflicts);
+
+        const fileByRelativePath = new Map(
+          batch.map((file) => [file.webkitRelativePath || file.name, file]),
+        );
+        const uploadable = files.length - conflicts.length;
+
+        for (const upload of prepared.uploads) {
+          const file = fileByRelativePath.get(upload.relativePath);
+          if (!file) {
+            throw new Error(`Missing file for ${upload.relativePath}`);
+          }
           setUploadProgress(
-            `Uploading ${uploadedItems.length + 1} / ${files.length}…`,
+            `Uploading ${uploadedItems.length + 1} / ${uploadable}…`,
           );
 
           const res = await fetch(upload.url, {
@@ -124,16 +134,28 @@ export function BrowseToolbar({ path }: Props) {
         }
       }
 
-      setUploadProgress("Finishing…");
-      const done = await completeUploadsAction(uploadedItems);
-      if (!done.ok) {
-        setError(done.error);
-        setUploadProgress(null);
-        return;
+      if (uploadedItems.length > 0) {
+        setUploadProgress("Finishing…");
+        const done = await completeUploadsAction(uploadedItems);
+        if (!done.ok) {
+          setError(done.error);
+          setUploadProgress(null);
+          return;
+        }
       }
 
       setUploadProgress(null);
-      router.refresh();
+      if (conflicts.length > 0) {
+        const listed = conflicts.join(", ");
+        setError(
+          uploadedItems.length > 0
+            ? `Uploaded ${uploadedItems.length}; skipped ${conflicts.length} already existing: ${listed}`
+            : `Skipped ${conflicts.length} already existing: ${listed}`,
+        );
+      }
+      if (uploadedItems.length > 0) {
+        router.refresh();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
       setUploadProgress(null);

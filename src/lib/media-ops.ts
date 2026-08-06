@@ -146,6 +146,7 @@ export type ResolvedUpload = {
   size: number;
   folderPath: string;
   name: string;
+  relativePath: string;
 };
 
 /** Validate upload targets and return opaque keys + library placement. */
@@ -194,6 +195,7 @@ export function resolveUploadKeys(
       size: file.size,
       folderPath,
       name: fileName,
+      relativePath: file.relativePath,
     });
   }
 
