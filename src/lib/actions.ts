@@ -24,11 +24,15 @@ import { getBucket, objectExists, presignPutObject } from "@/lib/s3";
 import { assertValidKey, baseName, normalizeFolderPath } from "@/lib/storage-keys";
 import {
   createOrGetFolderShare,
+  createOrGetTagShare,
   getActiveShareByFolderId,
+  getActiveTagShareByTagId,
   revokeFolderShare,
+  revokeTagShare,
   sharePath,
+  tagSharePath,
 } from "@/lib/shares";
-import { findOrCreateTags, slugifyTag } from "@/lib/tags";
+import { findOrCreateTags, getTagBySlug, slugifyTag } from "@/lib/tags";
 import { headers } from "next/headers";
 
 async function requireUser() {
@@ -42,6 +46,7 @@ async function requireUser() {
 function revalidateLibrary() {
   revalidatePath("/browse", "layout");
   revalidatePath("/search");
+  revalidatePath("/tags", "layout");
   revalidatePath("/trash");
 }
 
@@ -432,13 +437,20 @@ export async function completeUploadsAction(items: CompleteUploadItem[]) {
   }
 }
 
-async function absoluteShareUrl(token: string): Promise<string> {
+async function absoluteUrlForPath(path: string): Promise<string> {
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host");
   const proto = h.get("x-forwarded-proto") ?? "http";
-  const path = sharePath(token);
   if (!host) return path;
   return `${proto}://${host}${path}`;
+}
+
+async function absoluteShareUrl(token: string): Promise<string> {
+  return absoluteUrlForPath(sharePath(token));
+}
+
+async function absoluteTagShareUrl(token: string): Promise<string> {
+  return absoluteUrlForPath(tagSharePath(token));
 }
 
 export async function getFolderShareAction(folderPath: string) {
@@ -485,6 +497,52 @@ export async function revokeFolderShareAction(folderPath: string) {
   await requireUser();
   try {
     const revoked = await revokeFolderShare(folderPath);
+    return { ok: true as const, revoked };
+  } catch (err) {
+    return {
+      ok: false as const,
+      error: actionError(err, "Could not revoke share link"),
+    };
+  }
+}
+
+export async function getTagShareAction(tagSlug: string) {
+  await requireUser();
+  try {
+    const tag = await getTagBySlug(tagSlug);
+    if (!tag) {
+      return { ok: false as const, error: "Tag not found" };
+    }
+    const share = await getActiveTagShareByTagId(tag.id);
+    if (!share) {
+      return { ok: true as const, url: null as string | null };
+    }
+    return { ok: true as const, url: await absoluteTagShareUrl(share.token) };
+  } catch (err) {
+    return {
+      ok: false as const,
+      error: actionError(err, "Could not load share link"),
+    };
+  }
+}
+
+export async function createOrGetTagShareAction(tagSlug: string) {
+  const user = await requireUser();
+  try {
+    const { token } = await createOrGetTagShare(tagSlug, user.id);
+    return { ok: true as const, url: await absoluteTagShareUrl(token) };
+  } catch (err) {
+    return {
+      ok: false as const,
+      error: actionError(err, "Could not create share link"),
+    };
+  }
+}
+
+export async function revokeTagShareAction(tagSlug: string) {
+  await requireUser();
+  try {
+    const revoked = await revokeTagShare(tagSlug);
     return { ok: true as const, revoked };
   } catch (err) {
     return {

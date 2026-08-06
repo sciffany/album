@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getBucket, presignGetObject } from "@/lib/s3";
 import {
-  getActiveShareByToken,
-  isMediaUnderShare,
+  canAccessMediaViaShareToken,
   SHARE_COOKIE_NAME,
 } from "@/lib/shares";
 
@@ -32,8 +31,7 @@ export async function GET(request: Request) {
     if (!token) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
-    const share = await getActiveShareByToken(token);
-    if (!share || !(await isMediaUnderShare(key, share))) {
+    if (!(await canAccessMediaViaShareToken(key, token))) {
       return new NextResponse("Forbidden", { status: 403 });
     }
   }

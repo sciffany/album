@@ -68,12 +68,27 @@ model Media {
 }
 
 model Tag {
-  id    String     @id @default(cuid())
-  text  String     @unique
-  slug  String     @unique
-  media MediaTag[]
+  id     String     @id @default(cuid())
+  text   String     @unique
+  slug   String     @unique
+  media  MediaTag[]
+  shares TagShare[]
 
   @@map("tags")
+}
+
+/// Secret URL share for a tag (all media with that tag). One active share per tag.
+model TagShare {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  tagId     String    @map("tag_id")
+  tag       Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  createdBy String?   @map("created_by")
+  createdAt DateTime  @default(now()) @map("created_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  @@index([tagId])
+  @@map("tag_shares")
 }
 
 model MediaTag {

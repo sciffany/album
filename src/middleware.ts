@@ -17,7 +17,9 @@ export default auth((req) => {
   const isLoggedIn = !!req.auth;
   const { pathname } = req.nextUrl;
   const isAuthRoute = pathname.startsWith("/login");
-  const isShareRoute = pathname.startsWith("/s/");
+  const isFolderShareRoute = pathname.startsWith("/s/");
+  const isTagShareRoute = pathname.startsWith("/t/");
+  const isShareRoute = isFolderShareRoute || isTagShareRoute;
   const isS3Route = pathname.startsWith("/api/s3/");
   const shareCookie = req.cookies.get(SHARE_COOKIE_NAME)?.value;
 
@@ -56,9 +58,11 @@ export const config = {
   matcher: [
     "/browse/:path*",
     "/search/:path*",
+    "/tags/:path*",
     "/trash",
     "/login",
     "/s/:path*",
+    "/t/:path*",
     "/api/tags/:path*",
     "/api/s3/:path*",
     "/api/download/:path*",

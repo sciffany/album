@@ -10,6 +10,10 @@ export function sharePath(token: string, relativePath = ""): string {
     .join("/")}`;
 }
 
+export function tagSharePath(token: string): string {
+  return `/t/${encodeURIComponent(token)}`;
+}
+
 /** Absolute path under the share root, or null if outside / invalid. */
 export function resolveShareBrowsePath(
   shareRootPath: string,

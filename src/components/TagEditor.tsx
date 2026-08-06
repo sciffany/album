@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   KeyboardEvent,
   useEffect,
@@ -8,6 +9,7 @@ import {
   useTransition,
 } from "react";
 import { setMediaTags } from "@/lib/actions";
+import { slugifyTag } from "@/lib/tag-slug";
 
 type TagChip = { id?: string; text: string };
 
@@ -115,22 +117,35 @@ export function TagEditor({
           pending ? "opacity-70" : ""
         }`}
       >
-        {tags.map((tag, i) => (
-          <span
-            key={`${tag.text}-${i}`}
-            className="inline-flex items-center gap-1 rounded bg-[var(--surface-2)] px-2 py-0.5 text-xs text-[var(--ink)]"
-          >
-            {tag.text}
-            <button
-              type="button"
-              onClick={() => removeTag(i)}
-              className="text-[var(--muted)] hover:text-[var(--ink)]"
-              aria-label={`Remove ${tag.text}`}
+        {tags.map((tag, i) => {
+          const slug = slugifyTag(tag.text);
+          return (
+            <span
+              key={`${tag.text}-${i}`}
+              className="inline-flex items-center gap-1 rounded bg-[var(--surface-2)] px-2 py-0.5 text-xs text-[var(--ink)]"
             >
-              ×
-            </button>
-          </span>
-        ))}
+              {slug ? (
+                <Link
+                  href={`/tags/${encodeURIComponent(slug)}`}
+                  className="hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {tag.text}
+                </Link>
+              ) : (
+                tag.text
+              )}
+              <button
+                type="button"
+                onClick={() => removeTag(i)}
+                className="text-[var(--muted)] hover:text-[var(--ink)]"
+                aria-label={`Remove ${tag.text}`}
+              >
+                ×
+              </button>
+            </span>
+          );
+        })}
         <input
           value={input}
           onChange={(e) => {
