@@ -4,6 +4,7 @@ import { useState, type MouseEvent } from "react";
 import { TagEditor } from "@/components/TagEditor";
 import { CaptionEditor } from "@/components/CaptionEditor";
 import { MediaActions } from "@/components/MediaActions";
+import { MediaViewer } from "@/components/MediaViewer";
 import { SelectionCheckbox } from "@/components/SelectionCheckbox";
 
 export type MediaItem = {
@@ -51,8 +52,10 @@ export function MediaRow({
   onToggleSelect?: (e: MouseEvent) => void;
 }) {
   const [thumbFailed, setThumbFailed] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
   const objectHref = `/api/s3/object?key=${encodeURIComponent(media.s3Key)}`;
   const dateLabel = formatDate(media.datetimeTaken);
+  const isVideo = media.mediaType === "video";
 
   return (
     <article
@@ -70,13 +73,13 @@ export function MediaRow({
             onToggle={onToggleSelect}
           />
         )}
-        <a
-          href={objectHref}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="relative block h-full w-full overflow-hidden rounded-md bg-[var(--surface-2)]"
+        <button
+          type="button"
+          onClick={() => setViewerOpen(true)}
+          className="relative block h-full w-full overflow-hidden rounded-md bg-[var(--surface-2)] text-left"
+          aria-label={`View ${media.name}`}
         >
-          {!thumbFailed ? (
+          {!thumbFailed && !isVideo ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={objectHref}
@@ -86,12 +89,24 @@ export function MediaRow({
               decoding="async"
               onError={() => setThumbFailed(true)}
             />
+          ) : isVideo ? (
+            <span className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center text-[10px] uppercase tracking-wide text-[var(--muted)]">
+              <span
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-black/55 text-white"
+                aria-hidden
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5 translate-x-0.5" fill="currentColor">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              </span>
+              Play
+            </span>
           ) : (
             <span className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center text-[10px] uppercase tracking-wide text-[var(--muted)]">
               <span className="text-lg leading-none" aria-hidden>
                 ↗
               </span>
-              Open
+              View
             </span>
           )}
           {media.mediaType !== "photo" && (
@@ -99,7 +114,7 @@ export function MediaRow({
               {media.mediaType}
             </span>
           )}
-        </a>
+        </button>
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col gap-2">
@@ -127,6 +142,15 @@ export function MediaRow({
           folderPath={media.folderPath}
         />
       </div>
+
+      <MediaViewer
+        open={viewerOpen}
+        onClose={() => setViewerOpen(false)}
+        src={objectHref}
+        name={media.name}
+        caption={media.caption}
+        mediaType={media.mediaType}
+      />
     </article>
   );
 }
