@@ -562,6 +562,65 @@ export async function purgeMediaObject(s3Key: string): Promise<void> {
   await prisma.media.delete({ where: { id: media.id } });
 }
 
+/**
+ * Permanently delete every soft-deleted media item (S3 + DB), then remove
+ * soft-deleted folders that no longer hold media or child folders.
+ */
+export async function emptyTrash(): Promise<{
+  purged: number;
+  foldersRemoved: number;
+  errors: { key: string; message: string }[];
+}> {
+  const items = await prisma.media.findMany({
+    where: { deletedAt: { not: null } },
+    select: { s3Key: true },
+  });
+
+  let purged = 0;
+  const errors: { key: string; message: string }[] = [];
+
+  for (const { s3Key } of items) {
+    try {
+      await purgeMediaObject(s3Key);
+      purged++;
+    } catch (err) {
+      errors.push({
+        key: s3Key,
+        message: err instanceof Error ? err.message : "Could not delete",
+      });
+    }
+  }
+
+  const foldersRemoved = await purgeEmptySoftDeletedFolders();
+  return { purged, foldersRemoved, errors };
+}
+
+/** Hard-delete soft-deleted folders with no media and no remaining children. */
+async function purgeEmptySoftDeletedFolders(): Promise<number> {
+  const softFolders = await prisma.folder.findMany({
+    where: { deletedAt: { not: null } },
+    select: { id: true, path: true },
+  });
+
+  softFolders.sort(
+    (a, b) => b.path.split("/").length - a.path.split("/").length,
+  );
+
+  let removed = 0;
+  for (const folder of softFolders) {
+    const [mediaCount, childCount] = await Promise.all([
+      prisma.media.count({ where: { folderId: folder.id } }),
+      prisma.folder.count({ where: { parentId: folder.id } }),
+    ]);
+    if (mediaCount > 0 || childCount > 0) continue;
+
+    await prisma.folder.delete({ where: { id: folder.id } });
+    removed++;
+  }
+
+  return removed;
+}
+
 export type TrashListItem = {
   s3Key: string;
   name: string;

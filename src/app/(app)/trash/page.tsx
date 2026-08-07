@@ -1,3 +1,4 @@
+import { EmptyTrashButton } from "@/components/EmptyTrashButton";
 import { TrashItemRow } from "@/components/TrashItemRow";
 import { listTrashMedia } from "@/lib/media-ops";
 import { mediaTypeFromName } from "@/lib/folders";
@@ -7,15 +8,18 @@ export default async function TrashPage() {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <h1 className="font-[family-name:var(--font-display)] text-3xl text-[var(--ink)]">
-          Recycle bin
-        </h1>
-        <p className="text-sm text-[var(--muted)]">
-          Soft-deleted files stay in storage until you delete them forever.
-          Restore returns them to their folder (or the library root if that
-          folder was also deleted).
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="space-y-2">
+          <h1 className="font-[family-name:var(--font-display)] text-3xl text-[var(--ink)]">
+            Recycle bin
+          </h1>
+          <p className="text-sm text-[var(--muted)]">
+            Soft-deleted files stay in storage until you delete them forever.
+            Restore returns them to their folder (or the library root if that
+            folder was also deleted).
+          </p>
+        </div>
+        {items.length > 0 && <EmptyTrashButton itemCount={items.length} />}
       </div>
 
       {items.length === 0 ? (

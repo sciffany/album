@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import {
   createFolder,
+  emptyTrash,
   ensureFolderPath,
   listChildFolderPaths,
   moveFolderPrefix,
@@ -314,6 +315,27 @@ export async function purgeMediaAction(s3Key: string) {
     return { ok: true as const };
   } catch (err) {
     return { ok: false as const, error: actionError(err, "Could not delete") };
+  }
+}
+
+export async function emptyTrashAction() {
+  await requireUser();
+  try {
+    const result = await emptyTrash();
+    revalidateLibrary();
+    if (result.errors.length > 0 && result.purged === 0) {
+      return {
+        ok: false as const,
+        error: result.errors[0]?.message ?? "Could not empty recycle bin",
+        ...result,
+      };
+    }
+    return { ok: true as const, ...result };
+  } catch (err) {
+    return {
+      ok: false as const,
+      error: actionError(err, "Could not empty recycle bin"),
+    };
   }
 }
 
