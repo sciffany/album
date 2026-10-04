@@ -45,6 +45,16 @@ export default async function BrowsePage({
           <BrowseToolbar
             path={path}
             hasShare={Boolean(path && sharedPaths.has(path))}
+            photos={media
+              .filter((item) => item.mediaType === "photo")
+              .map((item) => ({
+                id: item.id,
+                name: item.name,
+                s3Key: item.s3Key,
+                datetimeTaken: item.datetimeTaken
+                  ? item.datetimeTaken.toISOString()
+                  : null,
+              }))}
           />
         </div>
       </div>

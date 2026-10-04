@@ -14,6 +14,10 @@ import {
   presignUploadsAction,
 } from "@/lib/actions";
 import { FolderShareControls } from "@/components/FolderShareControls";
+import {
+  RemoveDuplicates,
+  type FolderPhoto,
+} from "@/components/RemoveDuplicates";
 
 /** Dotfiles (e.g. .DS_Store) are skipped; everything else is uploadable. */
 function isAllowedUploadFile(file: File): boolean {
@@ -24,10 +28,12 @@ function isAllowedUploadFile(file: File): boolean {
 type Props = {
   path: string;
   hasShare: boolean;
+  photos: FolderPhoto[];
 };
 
-export function BrowseToolbar({ path, hasShare }: Props) {
+export function BrowseToolbar({ path, hasShare, photos }: Props) {
   const router = useRouter();
+  const [scanBusy, setScanBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
@@ -177,7 +183,7 @@ export function BrowseToolbar({ path, hasShare }: Props) {
     });
   }
 
-  const busy = pending || !!uploadProgress;
+  const busy = pending || !!uploadProgress || scanBusy;
 
   return (
     <div className="space-y-2">
@@ -214,6 +220,11 @@ export function BrowseToolbar({ path, hasShare }: Props) {
             Download folder
           </a>
         ) : null}
+        <RemoveDuplicates
+          photos={photos}
+          disabled={pending || !!uploadProgress}
+          onBusyChange={setScanBusy}
+        />
         {path ? (
           <FolderShareControls key={path} path={path} hasShare={hasShare} />
         ) : null}
