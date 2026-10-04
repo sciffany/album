@@ -1,35 +1,26 @@
 "use client";
 
-import { useEffect, useState, useTransition, type MouseEvent } from "react";
+import { useState, useTransition, type MouseEvent } from "react";
 import {
   createOrGetFolderShareAction,
-  getFolderShareAction,
   revokeFolderShareAction,
 } from "@/lib/actions";
 
 export function FolderShareControls({
   path,
+  hasShare: initialHasShare,
   compact = false,
 }: {
   path: string;
+  /** Whether this folder already has an active share link. */
+  hasShare: boolean;
   /** Smaller buttons for nested FolderActions row. */
   compact?: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [hasShare, setHasShare] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    getFolderShareAction(path).then((result) => {
-      if (cancelled || !result.ok) return;
-      setHasShare(Boolean(result.url));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [path]);
+  const [hasShare, setHasShare] = useState(initialHasShare);
 
   if (!path) return null;
 

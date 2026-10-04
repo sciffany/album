@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { FolderGrid } from "@/components/FolderGrid";
 import { TagShareControls } from "@/components/TagShareControls";
+import { getActiveTagShareByTagId } from "@/lib/shares";
 import { listMediaByTagSlug } from "@/lib/tags";
 
 export default async function TagBrowsePage({
@@ -14,6 +15,7 @@ export default async function TagBrowsePage({
   if (!tagged) {
     notFound();
   }
+  const share = await getActiveTagShareByTagId(tagged.id);
 
   return (
     <div className="space-y-6">
@@ -27,7 +29,7 @@ export default async function TagBrowsePage({
             this tag
           </p>
         </div>
-        <TagShareControls slug={tagged.slug} />
+        <TagShareControls slug={tagged.slug} hasShare={Boolean(share)} />
       </div>
       {tagged.media.length === 0 ? (
         <p className="py-12 text-center text-[var(--muted)]">

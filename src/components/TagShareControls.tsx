@@ -1,32 +1,23 @@
 "use client";
 
-import { useEffect, useState, useTransition, type MouseEvent } from "react";
+import { useState, useTransition, type MouseEvent } from "react";
 import {
   createOrGetTagShareAction,
-  getTagShareAction,
   revokeTagShareAction,
 } from "@/lib/actions";
 
 export function TagShareControls({
   slug,
+  hasShare: initialHasShare,
 }: {
   slug: string;
+  /** Whether this tag already has an active share link. */
+  hasShare: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [hasShare, setHasShare] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    getTagShareAction(slug).then((result) => {
-      if (cancelled || !result.ok) return;
-      setHasShare(Boolean(result.url));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [slug]);
+  const [hasShare, setHasShare] = useState(initialHasShare);
 
   if (!slug) return null;
 

@@ -23,9 +23,10 @@ function isAllowedUploadFile(file: File): boolean {
 
 type Props = {
   path: string;
+  hasShare: boolean;
 };
 
-export function BrowseToolbar({ path }: Props) {
+export function BrowseToolbar({ path, hasShare }: Props) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -213,7 +214,9 @@ export function BrowseToolbar({ path }: Props) {
             Download folder
           </a>
         ) : null}
-        {path ? <FolderShareControls path={path} /> : null}
+        {path ? (
+          <FolderShareControls key={path} path={path} hasShare={hasShare} />
+        ) : null}
         <input
           ref={fileInputRef}
           type="file"

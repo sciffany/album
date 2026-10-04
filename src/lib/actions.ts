@@ -26,14 +26,12 @@ import { assertValidKey, baseName, normalizeFolderPath } from "@/lib/storage-key
 import {
   createOrGetFolderShare,
   createOrGetTagShare,
-  getActiveShareByFolderId,
-  getActiveTagShareByTagId,
   revokeFolderShare,
   revokeTagShare,
   sharePath,
   tagSharePath,
 } from "@/lib/shares";
-import { findOrCreateTags, getTagBySlug, slugifyTag } from "@/lib/tags";
+import { findOrCreateTags, slugifyTag } from "@/lib/tags";
 import { headers } from "next/headers";
 
 async function requireUser() {
@@ -475,33 +473,6 @@ async function absoluteTagShareUrl(token: string): Promise<string> {
   return absoluteUrlForPath(tagSharePath(token));
 }
 
-export async function getFolderShareAction(folderPath: string) {
-  await requireUser();
-  try {
-    const path = normalizeFolderPath(folderPath || "");
-    if (!path) {
-      return { ok: true as const, url: null as string | null };
-    }
-    const folder = await prisma.folder.findFirst({
-      where: { path, deletedAt: null },
-      select: { id: true },
-    });
-    if (!folder) {
-      return { ok: false as const, error: "Folder not found" };
-    }
-    const share = await getActiveShareByFolderId(folder.id);
-    if (!share) {
-      return { ok: true as const, url: null as string | null };
-    }
-    return { ok: true as const, url: await absoluteShareUrl(share.token) };
-  } catch (err) {
-    return {
-      ok: false as const,
-      error: actionError(err, "Could not load share link"),
-    };
-  }
-}
-
 export async function createOrGetFolderShareAction(folderPath: string) {
   const user = await requireUser();
   try {
@@ -524,26 +495,6 @@ export async function revokeFolderShareAction(folderPath: string) {
     return {
       ok: false as const,
       error: actionError(err, "Could not revoke share link"),
-    };
-  }
-}
-
-export async function getTagShareAction(tagSlug: string) {
-  await requireUser();
-  try {
-    const tag = await getTagBySlug(tagSlug);
-    if (!tag) {
-      return { ok: false as const, error: "Tag not found" };
-    }
-    const share = await getActiveTagShareByTagId(tag.id);
-    if (!share) {
-      return { ok: true as const, url: null as string | null };
-    }
-    return { ok: true as const, url: await absoluteTagShareUrl(share.token) };
-  } catch (err) {
-    return {
-      ok: false as const,
-      error: actionError(err, "Could not load share link"),
     };
   }
 }

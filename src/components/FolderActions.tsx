@@ -18,9 +18,11 @@ import { parentFolder } from "@/lib/storage-keys";
 export function FolderActions({
   path,
   name,
+  hasShare,
 }: {
   path: string;
   name: string;
+  hasShare: boolean;
 }) {
   const router = useRouter();
   const [moveOpen, setMoveOpen] = useState(false);
@@ -137,7 +139,7 @@ export function FolderActions({
       >
         Download
       </a>
-      <FolderShareControls path={path} compact />
+      <FolderShareControls path={path} hasShare={hasShare} compact />
       <button
         type="button"
         onClick={onRenameOpen}

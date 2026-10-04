@@ -8,6 +8,7 @@ import {
   listFolderContents,
   pathFromSegments,
 } from "@/lib/folders";
+import { activeShareFolderPaths } from "@/lib/shares";
 import { isTrashFolderPath } from "@/lib/storage-keys";
 
 export default async function BrowsePage({
@@ -27,6 +28,10 @@ export default async function BrowsePage({
   }
 
   const { folders, media } = await listFolderContents(path);
+  const sharedPaths = await activeShareFolderPaths([
+    ...(path ? [path] : []),
+    ...folders.map((folder) => folder.path),
+  ]);
   const crumbs = breadcrumbFromPath(path);
 
   return (
@@ -37,10 +42,19 @@ export default async function BrowsePage({
           <h1 className="font-[family-name:var(--font-display)] text-3xl text-[var(--ink)]">
             {path ? path.split("/").at(-1) : "Library"}
           </h1>
-          <BrowseToolbar path={path} />
+          <BrowseToolbar
+            path={path}
+            hasShare={Boolean(path && sharedPaths.has(path))}
+          />
         </div>
       </div>
-      <FolderGrid folders={folders} media={media} />
+      <FolderGrid
+        folders={folders.map((folder) => ({
+          ...folder,
+          hasShare: sharedPaths.has(folder.path),
+        }))}
+        media={media}
+      />
     </div>
   );
 }

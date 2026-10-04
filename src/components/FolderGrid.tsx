@@ -26,6 +26,7 @@ import {
 type FolderItem = {
   name: string;
   path: string;
+  hasShare?: boolean;
 };
 
 function buildSelectable(
@@ -243,7 +244,11 @@ export function FolderGrid({
                   </Link>
                 </div>
                 {!readOnly && (
-                  <FolderActions path={folder.path} name={folder.name} />
+                  <FolderActions
+                    path={folder.path}
+                    name={folder.name}
+                    hasShare={folder.hasShare ?? false}
+                  />
                 )}
               </div>
             );

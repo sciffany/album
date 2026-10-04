@@ -72,6 +72,24 @@ export async function getActiveShareByFolderId(
   return share;
 }
 
+/** Paths in `paths` that currently have an active share link. */
+export async function activeShareFolderPaths(
+  paths: string[],
+): Promise<Set<string>> {
+  const unique = [...new Set(paths.filter(Boolean))];
+  if (unique.length === 0) return new Set();
+
+  const rows = await prisma.folder.findMany({
+    where: {
+      path: { in: unique },
+      deletedAt: null,
+      shares: { some: { revokedAt: null } },
+    },
+    select: { path: true },
+  });
+  return new Set(rows.map((row) => row.path));
+}
+
 export async function createOrGetFolderShare(
   folderPath: string,
   createdBy?: string,
