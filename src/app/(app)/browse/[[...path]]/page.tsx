@@ -11,6 +11,9 @@ import {
 import { activeShareFolderPaths } from "@/lib/shares";
 import { isTrashFolderPath } from "@/lib/storage-keys";
 
+/** One photo is downloaded, resized, and sent to Gemini per action call. */
+export const maxDuration = 60;
+
 export default async function BrowsePage({
   params,
 }: {

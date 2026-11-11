@@ -40,6 +40,7 @@ openssl rand -base64 32
 - `AWS_REGION` — AWS region, or B2 region code (e.g. `us-west-004`)
 - `S3_BUCKET` — private bucket name
 - `S3_ENDPOINT` (optional) — custom S3 API URL; for B2 this defaults to `https://s3.<AWS_REGION>.backblazeb2.com`
+- `GEMINI_API_KEY` — Google AI Studio key for the **Tag photos** button ([AI Studio](https://aistudio.google.com/apikey)). The rest of the app works without it.
 
 7. Apply migrations and seed sample tags:
 
@@ -113,3 +114,9 @@ npm run sync:datetime -- --force
 ```
 
 Uses the same `STORAGE_PROVIDER` / AWS_* / `S3_BUCKET` / `DATABASE_URL` env vars as the app. By default, keys that already have `datetime_taken` are skipped.
+
+## Tag photos
+
+On a folder in Browse, **Tag photos** writes an AI caption and a few tags for each photo in that folder and its subfolders. Photos that already have an AI caption are skipped, so pressing the button again only picks up new photos. Tags you added by hand are left in place. Videos are skipped.
+
+Each photo is handled in its own request: the app downloads it, shrinks it, and sends it to Gemini Flash. The button shows progress (`Tagging 12 of 40`). Leave the page to stop; photos already saved stay tagged. Requires `GEMINI_API_KEY`. Apply the latest Prisma migration so tag rows can record whether they came from you or from this button.

@@ -19,6 +19,7 @@ import {
   softDeleteMediaObject,
   type UploadPresignRequest,
 } from "@/lib/media-ops";
+import { tagNextUntaggedPhoto } from "@/lib/ai-tag";
 import { extractDatetimeTaken } from "@/lib/datetime-taken";
 import { prisma } from "@/lib/prisma";
 import { getBucket, objectExists, presignPutObject } from "@/lib/s3";
@@ -508,6 +509,22 @@ export async function createOrGetTagShareAction(tagSlug: string) {
     return {
       ok: false as const,
       error: actionError(err, "Could not create share link"),
+    };
+  }
+}
+
+/** Tag one photo in the folder that does not yet have an AI caption. */
+export async function tagNextPhotoAction(folderPath: string) {
+  await requireUser();
+  try {
+    const result = await tagNextUntaggedPhoto(folderPath);
+    if (result.done) revalidateLibrary();
+    return { ok: true as const, ...result };
+  } catch (err) {
+    revalidateLibrary();
+    return {
+      ok: false as const,
+      error: actionError(err, "Could not tag photos"),
     };
   }
 }

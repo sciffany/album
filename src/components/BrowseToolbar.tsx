@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useEffect,
   useRef,
   useState,
   useTransition,
@@ -12,6 +13,7 @@ import {
   completeUploadsAction,
   createFolderAction,
   presignUploadsAction,
+  tagNextPhotoAction,
 } from "@/lib/actions";
 import { FolderShareControls } from "@/components/FolderShareControls";
 import {
@@ -40,7 +42,16 @@ export function BrowseToolbar({ path, hasShare, photos }: Props) {
   const [folderName, setFolderName] = useState("");
   const [pending, startTransition] = useTransition();
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [tagStatus, setTagStatus] = useState<string | null>(null);
+  const [tagBusy, setTagBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const tagRun = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      tagRun.current += 1;
+    };
+  }, []);
 
   function openNewFolder() {
     setFolderName("");
@@ -176,6 +187,52 @@ export function BrowseToolbar({ path, hasShare, photos }: Props) {
     }
   }
 
+  async function onTagPhotos() {
+    const run = ++tagRun.current;
+    setTagBusy(true);
+    setError(null);
+    setTagStatus("Tagging…");
+    let finished = 0;
+    let tagged = 0;
+    let skipped = 0;
+    let total: number | null = null;
+    try {
+      for (;;) {
+        if (tagRun.current !== run) return;
+        if (total != null && finished < total) {
+          setTagStatus(`Tagging ${finished + 1} of ${total}`);
+        }
+        const result = await tagNextPhotoAction(path);
+        if (tagRun.current !== run) return;
+        if (!result.ok) {
+          setError(result.error);
+          break;
+        }
+        if (result.done) {
+          if (finished === 0) setTagStatus("No new photos to tag");
+          else if (skipped > 0) {
+            setTagStatus(`Tagged ${tagged}. Skipped ${skipped}.`);
+          } else setTagStatus(null);
+          break;
+        }
+        finished += 1;
+        tagged += result.tagged;
+        if (result.tagged === 0) skipped += 1;
+        if (total == null) total = finished + result.remaining;
+        setTagStatus(`Tagging ${finished} of ${total}`);
+      }
+    } catch (err) {
+      if (tagRun.current === run) {
+        setError(err instanceof Error ? err.message : "Could not tag photos");
+      }
+    } finally {
+      if (tagRun.current === run) {
+        setTagBusy(false);
+        router.refresh();
+      }
+    }
+  }
+
   function onFilesSelected(e: ChangeEvent<HTMLInputElement>) {
     const list = e.target.files;
     startTransition(() => {
@@ -183,7 +240,7 @@ export function BrowseToolbar({ path, hasShare, photos }: Props) {
     });
   }
 
-  const busy = pending || !!uploadProgress || scanBusy;
+  const busy = pending || !!uploadProgress || scanBusy || tagBusy;
 
   return (
     <div className="space-y-2">
@@ -220,9 +277,20 @@ export function BrowseToolbar({ path, hasShare, photos }: Props) {
             Download folder
           </a>
         ) : null}
+        <button
+          type="button"
+          onClick={() => {
+            void onTagPhotos();
+          }}
+          disabled={busy}
+          aria-busy={tagBusy}
+          className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-sm text-[var(--ink)] transition hover:bg-[var(--surface-2)] disabled:opacity-50"
+        >
+          {tagBusy ? "Tagging…" : "Tag photos"}
+        </button>
         <RemoveDuplicates
           photos={photos}
-          disabled={pending || !!uploadProgress}
+          disabled={pending || !!uploadProgress || tagBusy}
           onBusyChange={setScanBusy}
         />
         {path ? (
@@ -248,8 +316,10 @@ export function BrowseToolbar({ path, hasShare, photos }: Props) {
           className="hidden"
           onChange={onFilesSelected}
         />
-        {uploadProgress && (
-          <span className="text-xs text-[var(--muted)]">{uploadProgress}</span>
+        {(tagStatus || uploadProgress) && (
+          <span className="text-xs text-[var(--muted)]">
+            {tagStatus || uploadProgress}
+          </span>
         )}
       </div>
       {error && <p className="text-xs text-red-700">{error}</p>}

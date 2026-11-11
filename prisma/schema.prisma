@@ -94,6 +94,8 @@ model TagShare {
 model MediaTag {
   mediaId String @map("media_id")
   tagId   String @map("tag_id")
+  /// "user" for tags added by hand, "ai" for tags from the folder tagging button.
+  source  String @default("user")
   media   Media  @relation(fields: [mediaId], references: [id], onDelete: Cascade)
   tag     Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
